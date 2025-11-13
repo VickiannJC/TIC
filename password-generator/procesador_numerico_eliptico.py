@@ -59,7 +59,7 @@ def calcular_exponente(lista_valores: List[float], num_codificacion: int = 0) ->
     
     # Mezcla áurea con codificación
     # Inspiración GLC: combinación modular de tres fuentes (a, c, num_codificación)
-    tiempo1=tiempo_a_int
+    tiempo1=tiempo_a_int()
     semilla_1 = (c * tiempo1 + a) % m #primera mezcla -> para difuminar la correlación con la entrada
     semilla_2 = ((c + num_codificacion) * tiempo1 + a) % m  # segunda mezcla -> para reforzar la entropía
 
@@ -72,7 +72,7 @@ def calcular_exponente(lista_valores: List[float], num_codificacion: int = 0) ->
     
     # Verificación del tamaño
     if resultado.bit_length() < 256:
-        tiempo2 = tiempo_a_int
+        tiempo2 = tiempo_a_int()
         resultado = (resultado * tiempo2 + phi64) & mask256
 
     resultado = hashear_a_entero(resultado)

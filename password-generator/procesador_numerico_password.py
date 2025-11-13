@@ -14,8 +14,8 @@ ALFABETO_EXTENDIDO = constantes.ALFABETO_EXTENDIDO
 
 
 # Límites para la longitud de la contraseña
-longitud_minima = constantes.LONGITUD_MINIMA_PASSWORD
-longitud_maxima = constantes.LONGITUD_MAXIMA_PASSWORD
+longitud_minima = constantes.longitud_minima
+longitud_maxima = constantes.longitud_maxima
 
 
 #NOTA: PARA CAMBIAR LAS CONTRASEÑAS GENERADAS ES CAMBIAR EL TAG DE LA PLATAFORMA EN EL ARCHIVO JSON "redes_sociales_con_tags.json"
@@ -30,7 +30,8 @@ def cargar_valores_de_usuario(nombre_archivo: str) -> Union[List[float], None]:
             # Extraer los valores numéricos del JSON
             scores = datos.get("predicted_scores", {})
             valores = list(scores.values())
-            return valores
+            cadena_usuario = datos.get("unique_profile_description", "")
+            return valores, cadena_usuario
     except FileNotFoundError:
         print(f"Error: El archivo '{nombre_archivo}' no se encontró.")
         return None

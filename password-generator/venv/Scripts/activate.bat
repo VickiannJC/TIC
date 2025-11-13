@@ -8,7 +8,7 @@ if defined _OLD_CODEPAGE (
     "%SystemRoot%\System32\chcp.com" 65001 > nul
 )
 
-set VIRTUAL_ENV=C:\Users\Sloth\OneDrive - Escuela Politécnica Nacional\Documentos\2025-A\TIC\Generador de Contraseñas\password_Generator\venv
+set VIRTUAL_ENV=C:\Users\Sloth\Desktop\TIC -Recopilacion\password-generator\venv
 
 if not defined PROMPT set PROMPT=$P$G
 
