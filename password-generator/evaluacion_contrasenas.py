@@ -10,7 +10,7 @@ longitud_minima = constantes.longitud_minima
 longitud_maxima = constantes.longitud_maxima
 simbolos_permitidos = constantes.SIMBOLOS_PERMITIDOS
 
-input_json = '.../Generador de Contraseñas/psy_module_analizer/resultado_palabras_sensible.json'
+input_json = 'resultado_palabras_sensible.json'
 output_contrasena_texto = 'contrasenas_evaluacion.txt'
 plataforma = "Instagram"
 
@@ -39,7 +39,7 @@ def main():
             
             
             with open(output_contrasena_texto, 'a') as archivo_texto:
-                archivo_texto.write(contrasena.decode('utf-8') + '\n')
+                archivo_texto.write(contrasena + '\n')
         print("Evaluación completada. Claves privadas almacenadas en el archivo de texto.")
     except Exception as e:
         print(f"Error durante la evaluación masiva: {e}")

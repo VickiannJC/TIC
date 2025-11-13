@@ -43,9 +43,9 @@ def generar_contrasena(cadena_usuario, longitud, desplazamiento, punto_inicio):
         contrasena += cadena_cifrada[indice_real]
 
     # Inspeccionar si dentro de la contraseña hay valores consecutivos del mismo tipo y verificar que no haya el mismo codigo ascii 
-    print("Contraseña antes de ajustes:",contrasena)
+    #print("Contraseña antes de ajustes:",contrasena)
     contrasena_modificada= inspeccion_estructural_contrasena(contrasena)    
-    print("Contraseña final generada:",contrasena_modificada)
+    #print("Contraseña final generada:",contrasena_modificada)
     return contrasena_modificada
 
 def matriz_grupo_ascii(cadena: str) -> list:
@@ -75,7 +75,7 @@ def matriz_grupo_ascii(cadena: str) -> list:
             grupo = 0  # Carácter no reconocido
 
         matriz.append((grupo,codigo_ascii))
-    print("matriz: ", matriz)
+    #print("matriz: ", matriz)
     return matriz
 
 def inspeccion_estructural_contrasena(cadena: str) -> str:
@@ -127,11 +127,11 @@ def inspeccion_estructural_contrasena(cadena: str) -> str:
                 nuevo_ascii = matriz[i][1] # Mantener el valor viejo si hay error
                 
             # Debugging
-            print(f"Corrección de Tipo en {i}: {matriz[i]} -> ({nuevo_tipo}, {nuevo_ascii})")
+           # print(f"Corrección de Tipo en {i}: {matriz[i]} -> ({nuevo_tipo}, {nuevo_ascii})")
                 
             #Actualización
             matriz[i] = (nuevo_tipo, nuevo_ascii)
-            print("matriz_nueva:" , matriz)
+            #print("matriz_nueva:" , matriz)
             contrasena_lista[i] = chr(nuevo_ascii)
             
     # print("Contraseña después de corregir tipos:", contrasena_lista)
@@ -142,7 +142,7 @@ def inspeccion_estructural_contrasena(cadena: str) -> str:
     simbolos_faltantes = 3 - simbolos_actuales
 
     if simbolos_faltantes > 0:
-        print(f"\nDetectados {simbolos_actuales} símbolos. Faltan {simbolos_faltantes} para el mínimo de 3.")
+        #print(f"\nDetectados {simbolos_actuales} símbolos. Faltan {simbolos_faltantes} para el mínimo de 3.")
     
         indices_no_simbolos = [i for i, (tipo, _) in enumerate(matriz) if tipo != 3]
         
@@ -230,7 +230,7 @@ def inspeccion_estructural_contrasena(cadena: str) -> str:
 
     return ''.join(contrasena_lista)
 
-
+"""
 #---PRUEBAS DE ENTRADA Y SALIDA DE FUNCIONES INDIVIDUAL---#
 # Ejemplo de uso
 nombre_archivo = 'resultado_psicologico_example.json'
@@ -278,3 +278,4 @@ print("Mensaje encriptado guardado en 'passwords.json'")
 recuperado = curva_eliptica.ecc_desencriptar_password(llave_privada, mensaje_encriptado)
 print("Mensaje desencriptado:", recuperado)
 
+"""
