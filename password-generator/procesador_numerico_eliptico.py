@@ -1,9 +1,12 @@
 import string
 from typing import List
+import constantes
+import time
+import hashlib
 
 # Definición del Alfabeto Extendido (Debe coincidir exactamente con el usado en el cifrado)
-SIMBOLOS_PERMITIDOS = "!@#$%^&*_+-=:;\.?/|"
-ALFABETO_EXTENDIDO = string.ascii_letters + "Ññ" + string.digits + SIMBOLOS_PERMITIDOS
+SIMBOLOS_PERMITIDOS = constantes.SIMBOLOS_PERMITIDOS
+ALFABETO_EXTENDIDO = constantes.ALFABETO_EXTENDIDO
 
 
 #Codificación numérica del la cadena cifrada del usuario(descripción psicológica)
@@ -20,8 +23,8 @@ def calcular_codificacion_numerica(cadena_cifrada:str) -> int:
     # Recorrer cada carácter en la cadena cifrada y sumar su índice en el Alfabeto Extendido
     for caracter in cadena_cifrada:
         if caracter in ALFABETO_EXTENDIDO:
-            indice = ALFABETO_EXTENDIDO.index(caracter)
-            suma_total += indice
+            valor_ascii = ord(caracter)
+            suma_total += valor_ascii
         else:
             print(f"Advertencia: El carácter '{caracter}' no está en el Alfabeto Extendido y será ignorado.")
 
@@ -56,9 +59,10 @@ def calcular_exponente(lista_valores: List[float], num_codificacion: int = 0) ->
     
     # Mezcla áurea con codificación
     # Inspiración GLC: combinación modular de tres fuentes (a, c, num_codificación)
-    semilla_1 = (c * phi64 + a) % m #primera mezcla -> para difuminar la correlación con la entrada
-    semilla_2 = ((c + num_codificacion) * phi64 + a * 3) % m  # segunda mezcla -> para reforzar la entropía
-    
+    tiempo1=tiempo_a_int
+    semilla_1 = (c * tiempo1 + a) % m #primera mezcla -> para difuminar la correlación con la entrada
+    semilla_2 = ((c + num_codificacion) * tiempo1 + a) % m  # segunda mezcla -> para reforzar la entropía
+
     # Cálculo de resultados intermedios
     resultado_1 = (a * semilla_1 + c) % m
     resultado_2 = (a * semilla_2 + c) % m
@@ -68,9 +72,29 @@ def calcular_exponente(lista_valores: List[float], num_codificacion: int = 0) ->
     
     # Verificación del tamaño
     if resultado.bit_length() < 256:
-        # Ajuste adicional si la entropía es baja
-        resultado = (resultado * phi64 + 0x9E3779B97F4A7C15) & mask256
+        tiempo2 = tiempo_a_int
+        resultado = (resultado * tiempo2 + phi64) & mask256
+
+    resultado = hashear_a_entero(resultado)
     resultado = resultado % n  # Asegurar que el exponente está dentro del orden del grupo de la curva
+
+    resultado = resultado | 1  # Forzar impar
+    
     print("Tamaño del exponente (bits):", resultado.bit_length())
     
     return resultado  
+
+def tiempo_a_int() -> int:
+    """Convierte el tiempo actual en un entero de alta entropía."""
+    tiempo_actual = time.time()
+    tiempo_entero = int(tiempo_actual * 1e6)  # Convertir a microsegundos para mayor precisión
+    return tiempo_entero
+
+def hashear_a_entero(numero: int) -> int:
+    """Aplica SHA-256 al número dado y devuelve un entero de alta entropía."""
+    numero_bytes = numero.to_bytes((numero.bit_length() + 7) // 8, byteorder='big') # Convertir el número a bytes, 7 para redondear hacia arriba y 8 bits por byte esto asegura que todos los bits se incluyan
+    hash_obj = hashlib.sha256(numero_bytes)
+    hash_bytes = hash_obj.digest()
+    hash_entero = int.from_bytes(hash_bytes, byteorder='big')
+    return hash_entero
+
