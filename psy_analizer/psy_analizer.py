@@ -12,6 +12,7 @@ import tensorflow.lite as tflite
 import numpy as np
 import pandas as pd
 import guardar_analisis
+import seguridad
 
 # --- Constantes ---
 RESPUESTAS_JSON = "resultado_palabras_sensible.json"
@@ -100,7 +101,7 @@ class PsychologicalAnalyzer:
         # Recibe ambos valores desde la función de descripción
         final_description_str, final_description_list = self._get_advanced_description(scores_df)
 
-        usuario_id = str(uuid.uuid4())
+        usuario_id = seguridad.generar_id_usuario()[0]  # Generar ID de usuario seguro
         
         return {
             "id_usuario": usuario_id,
@@ -129,7 +130,7 @@ def obtener_respuestas_dinamicamente():
                 print("Error: Entrada no válida. Por favor, ingrese solo un número.")
     return respuestas
 """ 
-"""
+
 
 def main():
     print(f"\n{'='*60}")
@@ -298,3 +299,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+"""
