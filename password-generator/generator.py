@@ -230,7 +230,7 @@ def inspeccion_estructural_contrasena(cadena: str) -> str:
 
     return ''.join(contrasena_lista)
 
-"""
+
 #---PRUEBAS DE ENTRADA Y SALIDA DE FUNCIONES INDIVIDUAL---#
 # Ejemplo de uso
 nombre_archivo = 'resultado_psicologico_example.json'
@@ -278,4 +278,3 @@ print("Mensaje encriptado guardado en 'passwords.json'")
 recuperado = curva_eliptica.ecc_desencriptar_password(llave_privada, mensaje_encriptado)
 print("Mensaje desencriptado:", recuperado)
 
-"""

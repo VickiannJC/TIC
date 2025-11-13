@@ -1,6 +1,8 @@
 import string
 longitud_minima = 10
 longitud_maxima = 16
+minimos_generacion_punto_inicio = 0
+maximos_generacion_punto_inicio = 500
 SIMBOLOS_PERMITIDOS = "!@#$%^&*_+-=:;\?./|"
 SIMBOLOS_PERMITIDOS_ascii = [ord(caracter) for caracter in SIMBOLOS_PERMITIDOS]
 ascii_inicio_Mayusculas = 65

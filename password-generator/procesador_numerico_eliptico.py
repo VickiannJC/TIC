@@ -76,10 +76,8 @@ def calcular_exponente(lista_valores: List[float], num_codificacion: int = 0) ->
         resultado = (resultado * tiempo2 + phi64) & mask256
 
     resultado = hashear_a_entero(resultado)
-    resultado = resultado % n  # Asegurar que el exponente está dentro del orden del grupo de la curva
-
     resultado = resultado | 1  # Forzar impar
-    
+    resultado = resultado % n  # Asegurar que el exponente está dentro del orden del grupo de la curva
     print("Tamaño del exponente (bits):", resultado.bit_length())
     
     return resultado  

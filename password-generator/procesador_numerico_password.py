@@ -6,15 +6,16 @@ import string
 from typing import List, Union
 import preprocesador_texto
 import random
+import constantes
 
 # Definición del Alfabeto Extendido (Debe coincidir exactamente con el usado en el cifrado)
-SIMBOLOS_PERMITIDOS = "!@#$%^&*_+-=:;\.?/|"
-ALFABETO_EXTENDIDO = string.ascii_letters + "Ññ" + string.digits + SIMBOLOS_PERMITIDOS
+SIMBOLOS_PERMITIDOS = constantes.SIMBOLOS_PERMITIDOS
+ALFABETO_EXTENDIDO = constantes.ALFABETO_EXTENDIDO
 
 
 # Límites para la longitud de la contraseña
-longitud_minima = 8
-longitud_maxima = 64
+longitud_minima = constantes.LONGITUD_MINIMA_PASSWORD
+longitud_maxima = constantes.LONGITUD_MAXIMA_PASSWORD
 
 
 #NOTA: PARA CAMBIAR LAS CONTRASEÑAS GENERADAS ES CAMBIAR EL TAG DE LA PLATAFORMA EN EL ARCHIVO JSON "redes_sociales_con_tags.json"
@@ -96,6 +97,7 @@ def calcular_desplazamiento (lista_valores: List[float], tag_plataforma: str, ma
     desplazamiento = 1 + int((max_rango -1) * math.log1p(base) / math.log1p(1000)) 
     #El modelulo 1000 define el rango máximo del desplazamiento
     #EL logaritmo controla la sensibilidad del desplazamiento a cambios en la mezcla (no lineal)
+    #log1p -> se usa para evitar log(0) y mejorar precisión con valores pequeños (por cautela) -> Resultados mas sensibles en la parte baja del rango
     #La combinación de logaritmos y escala controla lo rápido o lento que cambia el desplazamiento con cambios en la mezcla
     #El +1 asegura que el desplazamiento nunca sea cero (mínimo 1)
 
@@ -120,6 +122,12 @@ def generar_longitud(semilla: int, min_length: int = longitud_minima, max_length
     
     random.seed()  # Restablecer la semilla del generador de números aleatorios
     return numero
+
+def generar_punto_inicio() -> int:
+    """Genera un punto de inicio aleatorio para la selección de caracteres en la contraseña."""
+    punto_inicio = random.randint(constantes.minimos_generacion_punto_inicio, constantes.maximos_generacion_punto_inicio)
+    return punto_inicio
+    
 
 
 # Ejemplo de uso
