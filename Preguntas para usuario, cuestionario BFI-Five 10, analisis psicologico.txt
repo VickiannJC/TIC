@@ -1,0 +1,30 @@
+Instrucción general:
+
+Responde cada pregunta usando un número del 1 al 5, donde:
+1 = Totalmente en desacuerdo
+2 = En desacuerdo
+3 = Ni de acuerdo ni en desacuerdo
+4 = De acuerdo
+5 = Totalmente de acuerdo
+
+Preguntas (responde con un número del 1 al 5 en cada una)
+
+¿Te consideras una persona reservada y que suele hablar poco? (Escribe un número del 1 al 5)
+
+¿Sueles tratar a las personas con amabilidad y consideración? (Escribe un número del 1 al 5)
+
+¿Dirías que a veces eres un poco descuidado/a o desorganizado/a? (Escribe un número del 1 al 5)
+
+¿Te mantienes calmado/a y manejas bien el estrés en la mayoría de situaciones? (Escribe un número del 1 al 5)
+
+¿Prefieres realizar actividades o tareas que sean tradicionales o rutinarias? (Escribe un número del 1 al 5)
+
+¿Te consideras sociable y disfrutas pasar tiempo con otras personas? (Escribe un número del 1 al 5)
+
+¿En ocasiones puedes tener actitudes fuertes o generar conflictos con otras personas? (Escribe un número del 1 al 5)
+
+¿Sueles planificar tus actividades y cumplirlas con responsabilidad? (Escribe un número del 1 al 5)
+
+¿Te preocupas con facilidad o te pones nervioso/a rápidamente? (Escribe un número del 1 al 5)
+
+¿Tienes curiosidad y te gusta aprender sobre distintos temas? (Escribe un número del 1 al 5)

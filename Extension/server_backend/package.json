@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "mongoose": "^8.20.0",
+    "qrcode": "^1.5.4",
+    "web-push": "^3.6.7"
+  }
+}

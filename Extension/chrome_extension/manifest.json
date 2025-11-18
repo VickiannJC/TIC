@@ -1,0 +1,34 @@
+{
+    "manifest_version": 3,
+    "version": "1.0",
+    "name": "psy_password",
+    "description": "password manager extension based on whats in your mind",
+    "action": {
+        "default_title": "psy_password",
+        "default_icon": {
+            "16": "llave.png",
+            "48": "llave.png",
+            "128": "llave.png"
+        }
+    },
+    "permissions": [
+        "storage",
+        "activeTab",
+        "scripting",
+        "tabs"
+    ],
+    "host_permissions": [
+        "<all_urls>"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": ["<all_urls>"],
+            "js": ["content.js"],
+            "run_at": "document_idle"
+        }
+    ]
+
+}

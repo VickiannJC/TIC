@@ -2,6 +2,8 @@ import hashlib
 import os
 import uuid
 import secrets
+import json 
+from cryptography.fernet import Fernet
 
 algoritmo = 'sha256'
 longitud_salt = 16  # Longitud del salt en bytes
@@ -51,4 +53,11 @@ def verificar_id_usuario(id_usuario: str, hash_almacenado: str, salt_almacenado:
     except ValueError:
         return False
     
-def encriptar_datos()
+def encriptar_datos(datos: dict, fernet_obj: Fernet)-> str:
+    """Encripta los datos proporcionados utilizando el objeto Fernet dado."""
+
+    datos_json = json.dumps(datos) #Convertir a JSON
+    datos_bytes = datos_json.encode('utf-8') #Codificar para cifrar
+
+    token = fernet_obj.encrypt(datos_bytes)
+    return token.decode('utf-8') #cadena base 64

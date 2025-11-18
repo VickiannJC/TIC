@@ -13,6 +13,8 @@ import numpy as np
 import pandas as pd
 import guardar_analisis
 import seguridad
+import cryptography
+from cryptography.fernet import Fernet  
 
 # --- Constantes ---
 RESPUESTAS_JSON = "resultado_palabras_sensible.json"
@@ -102,6 +104,12 @@ class PsychologicalAnalyzer:
         final_description_str, final_description_list = self._get_advanced_description(scores_df)
 
         usuario_id = seguridad.generar_id_usuario()[0]  # Generar ID de usuario seguro
+
+        clave_fermet = Fernet.generate_key()
+        f = Fernet(clave_fermet)
+
+        valores = seguridad.encriptar_datos(  {name: float(score) for name, score in zip(trait_names, predicted_scores)} , fernet_obj=f)
+
         
         return {
             "id_usuario": usuario_id,
