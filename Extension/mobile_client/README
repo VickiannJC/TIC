@@ -1,0 +1,2 @@
+Esta carpeta contiene el código que se ejecuta en el móvil del cliente, después de escanear el QR.
+Se registra la subscripción Push del navegador del móvil y se envía al servidor Node.js
