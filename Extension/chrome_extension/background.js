@@ -1,7 +1,7 @@
 // ==========================
 // CONFIG SERVERS
 // ==========================
-const SERVER_BASE_URL = "http://localhost:3000";
+const SERVER_BASE_URL = "https://undeviously-largest-rashida.ngrok-free.dev";
 const KEY_MANAGER_URL = "http://localhost:8080";
 
 const POLLING_INTERVAL = 3000;

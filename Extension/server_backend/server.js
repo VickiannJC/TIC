@@ -61,18 +61,33 @@ async function sendPushNotification(subscription, payload, temporalID) {
 // ENDPOINTS REGISTRO / VINCULACIÓN
 // ===============================
 
-// Generar sesión temporal y QR (se llama desde la extensión)
 app.post('/generar-qr-sesion', async (req, res) => {
     const { email, platform } = req.body;
-
-    if (!email) {
-        return res.status(400).json({ error: 'Email requerido para generar QR' });
-    }
-
     const temporalID = 'SESS_' + Math.random().toString(36).substring(2, 9);
 
-    
+    // Detectar dinámicamente host real (ngrok, dominio, ip, local)
+    const proto = req.headers["x-forwarded-proto"] || req.protocol;
+    const host = req.headers["x-forwarded-host"] || req.headers.host;
+
+    const baseUrl = `${proto}://${host}`;
+
+    // URL REAL accesible desde el celular
+    const registerUrl = `${baseUrl}/mobile_client/register-mobile.html?sessionId=${temporalID}`;
+
+    const qrDataUrl = await qrcode.toDataURL(registerUrl);
+
+    // Guardar sesión temporal
+    qrSessions.set(temporalID, { email, platform, estado: 'pendiente' });
+
+    res.status(200).json({
+        qr: qrDataUrl,
+        sessionId: temporalID,
+        registerUrl,
+        vapidPublicKey: config.VAPID_PUBLIC_KEY,
+        platform
+    });
 });
+
 
 // Registro de subscripción del movil (cuando escanean el QR)
 app.post('/register-mobile', async (req, res) => {
