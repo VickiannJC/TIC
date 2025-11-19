@@ -1,16 +1,49 @@
-// URLs de los servidores (¡Ajustar si es necesario!)
-const SERVER_BASE_URL = 'http://localhost:3000'; // Servidor Node.js (Token)
-const KEY_MANAGER_URL = 'http://localhost:8080'; // Servidor Go (Material de Clave)
+// ==========================
+// CONFIG SERVERS
+// ==========================
+const SERVER_BASE_URL = "http://localhost:3000";
+const KEY_MANAGER_URL = "http://localhost:8080";
 
-const POLLING_INTERVAL = 3000; // 3 segundos
-const MAX_TIMEOUT = 60000; // 60 segundos de espera máxima
+const POLLING_INTERVAL = 3000;
+const MAX_TIMEOUT = 60000;
 
-// --- Función de Solicitud de Material de Clave al Servidor Go ---
+// ==========================
+// CONTROL DE TABS ACTIVOS
+// ==========================
+const activeTabs = new Set();
+let lastTabId = null; // ← esencial para QR refresh
+
+function safeSendMessage(tabId, payload) {
+    try {
+        if (activeTabs.has(tabId)) {
+            chrome.tabs.sendMessage(tabId, payload);
+        } else {
+            console.warn("[SW] No se envió mensaje: tabId inválido o sin content script activo.", tabId);
+        }
+    } catch (err) {
+        console.warn("[SW] Error enviando mensaje:", err);
+    }
+}
+
+// ==========================
+// EVENTOS SERVICE WORKER MV3
+// ==========================
+chrome.runtime.onInstalled.addListener(() => {
+    console.log("[SW] Instalado.");
+});
+
+chrome.runtime.onStartup.addListener(() => {
+    console.log("[SW] Reiniciado.");
+});
+
+// ==========================
+// GET KEY MATERIAL (LOGIN)
+// ==========================
 async function getKeyMaterialWithToken(token, email, platform) {
     try {
         const response = await fetch(`${KEY_MANAGER_URL}/get_key_material`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 auth_token: token,
                 user_email: email,
@@ -19,98 +52,171 @@ async function getKeyMaterialWithToken(token, email, platform) {
         });
 
         if (!response.ok) {
-            throw new Error('Error al solicitar material de clave al Key Manager.');
+            throw new Error("Error al solicitar material de clave al Key Manager");
         }
 
-        const data = await response.json();
-        // El servidor Go devuelve el material de clave (ej. clave derivada, datos cifrados)
-        return data; 
-
-    } catch (error) {
-        console.error("Error en el Key Manager (Servidor Go):", error);
+        return await response.json();
+    } catch (err) {
+        console.error("[SW] Error Key Manager:", err);
         return null;
     }
 }
 
-// --- Flujo de Autenticación Principal (Login) ---
+// ==========================
+// LOGIN FLOW
+// ==========================
+async function startAuthFlow(email, platform, tabId) {
+    try {
+        const resp = await fetch(`${SERVER_BASE_URL}/request-auth-login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, platform })
+        });
 
-function startAuthFlow(email, platform, tabId) {
-    // 1. Iniciar la solicitud de autenticación Push en el servidor Node.js
-    fetch(`${SERVER_BASE_URL}/request-auth-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email })
-    })
-    .then(response => {
-        if (!response.ok) {
-            if (response.status === 404) throw new Error('Dispositivo no vinculado');
-            throw new Error('Error al iniciar Push Auth');
+        if (!resp.ok) {
+            if (resp.status === 404) throw new Error("Dispositivo no vinculado");
+            throw new Error("Error al iniciar Push Auth");
         }
-        return response.json();
-    })
-    .then(data => {
-        // 2. Si la solicitud Push se envió con éxito, comenzar el polling para el token
-        startTokenPolling(email, platform, tabId); 
-    })
-    .catch(error => {
-        console.error("Error en flujo de autenticación:", error);
-        chrome.tabs.sendMessage(tabId, { action: "authTimeout", message: error.message });
-    });
+
+        await resp.json();
+        console.log("[SW] Push de login enviado, iniciando polling…");
+
+        startTokenPolling(email, platform, tabId);
+
+    } catch (err) {
+        safeSendMessage(tabId, {
+            action: "authTimeout",
+            message: err.message
+        });
+    }
 }
 
-// Función de Polling para consultar el Token de Desbloqueo (Servidor Node.js)
+// ==========================
+// REGISTRO – GENERAR QR
+// ==========================
+async function startRegistrationFlow(email, platform, tabId) {
+
+    try {
+        const resp = await fetch(`${SERVER_BASE_URL}/generar-qr-sesion`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, platform })
+        });
+
+        if (!resp.ok) throw new Error("Error al generar QR");
+
+        const data = await resp.json();
+        const qrData = data.qr;
+
+        console.log("[SW] QR recibido desde backend para:", email);
+
+        safeSendMessage(tabId, {
+            action: "showRegistrationQR",
+            qrData,
+            email,
+            platform
+        });
+
+    } catch (err) {
+        console.error("[SW] Error en registro:", err);
+
+        safeSendMessage(tabId, {
+            action: "authTimeout",
+            message: err.message
+        });
+    }
+}
+
+// ==========================
+// LOGIN – POLLING
+// ==========================
 function startTokenPolling(email, platform, tabId) {
     let intervalId = null;
+    let timedOut = false;
 
-    const checkToken = async () => { 
-        fetch(`${SERVER_BASE_URL}/check-password-status?email=${encodeURIComponent(email)}`)
-            .then(res => res.json())
-            .then(async data => {
-                if (data.status === 'authenticated' && data.token) {
-                    // TOKEN DE DESBLOQUEO RECIBIDO
-                    clearInterval(intervalId);
-
-                    // 1. Usar el token para pedir el material de clave al Servidor Go
-                    const keyMaterial = await getKeyMaterialWithToken(data.token, email, platform);
-
-                    if (keyMaterial) {
-                        // 2. Enviar el material de clave al Content Script para desencriptación local
-                        chrome.tabs.sendMessage(tabId, {
-                            action: "fillKeyMaterial", 
-                            keyMaterial: keyMaterial 
-                        });
-                    } else {
-                        chrome.tabs.sendMessage(tabId, { action: "authTimeout", message: "Fallo al obtener el material de clave (Servidor Go)." });
-                    }
-                } else if (data.status === 'denied') {
-                    // Móvil rechazó
-                    clearInterval(intervalId);
-                    chrome.tabs.sendMessage(tabId, { action: "authTimeout", message: "Autenticación rechazada por el móvil." });
-                }
-            })
-            .catch(error => {
-                console.error('Error en polling:', error);
-                clearInterval(intervalId);
-                chrome.tabs.sendMessage(tabId, { action: "authTimeout", message: "Error de red durante la espera." });
-            });
-    };
-
-    intervalId = setInterval(checkToken, POLLING_INTERVAL);
-    
-    // Configurar un timeout máximo
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
+        timedOut = true;
         clearInterval(intervalId);
-        chrome.tabs.sendMessage(tabId, { action: "authTimeout", message: "Tiempo de espera agotado (60s)." });
-    }, MAX_TIMEOUT); 
+        safeSendMessage(tabId, {
+            action: "authTimeout",
+            message: "Tiempo de espera agotado (60s)."
+        });
+    }, MAX_TIMEOUT);
+
+    intervalId = setInterval(async () => {
+        if (timedOut) return;
+
+        try {
+            const resp = await fetch(
+                `${SERVER_BASE_URL}/check-password-status?email=${encodeURIComponent(email)}`
+            );
+
+            const data = await resp.json();
+
+            if (data.status === "authenticated" && data.token) {
+                clearTimeout(timeoutId);
+                clearInterval(intervalId);
+
+                const keyMaterial = await getKeyMaterialWithToken(
+                    data.token, email, platform
+                );
+
+                safeSendMessage(tabId, {
+                    action: "fillKeyMaterial",
+                    keyMaterial
+                });
+            }
+
+            if (data.status === "denied") {
+                clearTimeout(timeoutId);
+                clearInterval(intervalId);
+
+                safeSendMessage(tabId, {
+                    action: "authTimeout",
+                    message: "Autenticación rechazada por el usuario."
+                });
+            }
+
+        } catch (err) {
+            clearTimeout(timeoutId);
+            clearInterval(intervalId);
+
+            safeSendMessage(tabId, {
+                action: "authTimeout",
+                message: "Error de red durante autenticación."
+            });
+        }
+
+    }, POLLING_INTERVAL);
 }
 
+// ==========================
+// LISTENER PRINCIPAL MV3
+// ==========================
+chrome.runtime.onMessage.addListener((request, sender) => {
 
-// --- Escuchar mensajes del Content Script ---
+    // Registrar pestaña activa
+    if (request.action === "contentReady" && sender.tab) {
+        activeTabs.add(sender.tab.id);
+        lastTabId = sender.tab.id;     // ← RECORDAR TABID PARA REFRESCOS
+        return;
+    }
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "requestAuthLogin" && sender.tab) {
-        // CORRECCIÓN: Llamamos a startAuthFlow con email y platform
-        startAuthFlow(request.email, request.platform, sender.tab.id); 
-        return true; 
+    // Si el mensaje viene sin sender.tab (ej. timer 60s)
+    const tabId = sender.tab ? sender.tab.id : lastTabId;
+
+    if (!tabId) {
+        console.warn("[SW] No hay tabId disponible para procesar la acción.");
+        return;
+    }
+
+    const { email, platform } = request;
+
+    if (request.action === "requestAuthLogin") {
+        startAuthFlow(email, platform, tabId);
+    }
+
+    if (request.action === "requestRegistration") {
+        startRegistrationFlow(email, platform, tabId);
     }
 });

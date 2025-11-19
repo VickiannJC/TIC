@@ -1,165 +1,247 @@
-// Variable global para almacenar el campo de contraseña
+// ================================================
+// 1) AVISAR AL BACKGROUND QUE ESTE CONTENT ESTÁ ACTIVO
+// ================================================
+try {
+    chrome.runtime.sendMessage({ action: "contentReady" });
+} catch (e) {
+    console.warn("[CS] No se pudo enviar contentReady:", e);
+}
+
+// ================================================
+// 2) SELECTORES
+// ================================================
 let targetPasswordField = null;
+let lastTabIdUsed = null;
+let lastEmailUsed = null;
+let lastPlatformUsed = null;
+
 const targetSelector = 'input[type="password"]';
-const emailSelector = 'input[type="email"], input#email, input[name="email"]'; // Selector robusto para email
+const emailSelector = 'input[type="email"], input#email, input[name="email"]';
 
-// --- Funciones del DOM y Extracción ---
-
-// Crea e inyecta el botón
+// ================================================
+// 3) INYECTAR BOTÓN
+// ================================================
 function injectButton(passwordField) {
-    if (document.getElementById('extensionButton')) {
-        return; 
-    }
+    if (document.getElementById("psy-main-button")) return;
 
-    targetPasswordField = passwordField; // Guardamos la referencia global
+    targetPasswordField = passwordField;
 
-    const buttonContainer = document.createElement('div');
-    buttonContainer.innerHTML = `
-        <button id="extensionButton" 
+    const container = document.createElement("div");
+    container.id = "psy-container";
+    container.style.marginTop = "8px";
+
+    container.innerHTML = `
+        <button id="psy-main-button"
                 type="button"
-                style="margin-left: 120px; 
-                       padding: 5px 10px; 
-                       background-color: #007bff; 
-                       color: white; 
-                       border: none; 
-                       border-radius: 4px; 
-                       cursor: pointer;">
+                style="margin-left: 120px;
+                padding: 5px 10px;
+                background-color: #007bff;
+                color:white;
+                border:none;
+                border-radius:4px;
+                cursor:pointer;">
             🗝️ Autenticar
         </button>
+
+        <div id="psy-options" style="display:none; margin-left:120px; margin-top:5px;">
+            <button id="psy-register-button"
+                    style="background:#28a745; padding:4px 8px; border:none; border-radius:4px; color:white; cursor:pointer; margin-right:6px;">
+                Registro
+            </button>
+
+            <button id="psy-login-button"
+                    style="background:#17a2b8; padding:4px 8px; border:none; border-radius:4px; color:white; cursor:pointer;">
+                Inicio de sesión
+            </button>
+        </div>
     `;
 
-    passwordField.parentNode.insertBefore(buttonContainer, passwordField.nextSibling);
+    passwordField.parentNode.insertBefore(container, passwordField.nextSibling);
 
-    const button = document.getElementById('extensionButton');
-    
-    if (button) {
-        button.addEventListener('click', (event) => {
-            event.preventDefault(); 
+    const mainButton = document.getElementById("psy-main-button");
+    const options = document.getElementById("psy-options");
+    const btnRegister = document.getElementById("psy-register-button");
+    const btnLogin = document.getElementById("psy-login-button");
 
-            const emailField = document.querySelector(emailSelector);
-            let email = "";
-            let platformName = document.title || window.location.hostname;
-            
-            if (emailField) {
-                email = emailField.value.trim();
-                if(email === ""){
-                    alert("Por favor, ingrese su email.");
-                    return;
-                }
-            } else {
-                alert("Error: No se encontró el campo de email. Intente rellenarlo manualmente.");
+    mainButton.onclick = () =>
+        options.style.display = options.style.display === "none" ? "block" : "none";
+
+    function gatherInfo() {
+        const emailField = document.querySelector(emailSelector);
+        if (!emailField || !emailField.value.trim()) {
+            alert("Por favor ingrese su email.");
+            return null;
+        }
+        return {
+            email: emailField.value.trim(),
+            platform: document.title || window.location.hostname
+        };
+    }
+
+    btnRegister.onclick = () => {
+        const info = gatherInfo();
+        if (!info) return;
+
+        lastEmailUsed = info.email;
+        lastPlatformUsed = info.platform;
+
+        btnRegister.disabled = true;
+        btnRegister.textContent = "⏳ Registro...";
+
+        chrome.runtime.sendMessage({
+            action: "requestRegistration",
+            email: lastEmailUsed,
+            platform: lastPlatformUsed
+        });
+    };
+
+    btnLogin.onclick = () => {
+        const info = gatherInfo();
+        if (!info) return;
+
+        btnLogin.disabled = true;
+        btnLogin.textContent = "⏳ Iniciando...";
+
+        chrome.runtime.sendMessage({
+            action: "requestAuthLogin",
+            email: info.email,
+            platform: info.platform
+        });
+    };
+}
+
+// Inject al detectar campo password
+const obs = new MutationObserver(() => {
+    const field = document.querySelector(targetSelector);
+    if (field) {
+        injectButton(field);
+        obs.disconnect();
+    }
+});
+obs.observe(document.body, { childList: true, subtree: true });
+
+if (document.querySelector(targetSelector))
+    injectButton(document.querySelector(targetSelector));
+
+// ======================================================
+// 4) DESCIFRADO SIMULADO
+// ======================================================
+function decryptPasswordLocally(keyMaterial) {
+    if (!keyMaterial?.derived_key) return null;
+    return `PWD_${keyMaterial.derived_key.slice(0, 4)}_${keyMaterial.encrypted_data.slice(-4)}`;
+}
+
+// ======================================================
+// 5) LISTENER – QR / LOGIN
+// ======================================================
+chrome.runtime.onMessage.addListener((request, sender) => {
+
+    // Guardar tabId para refrescos
+    if (sender?.tab?.id) {
+        lastTabIdUsed = sender.tab.id;
+    }
+
+    // ========================================
+    // REGISTRO → POPUP QR
+    // ========================================
+    if (request.action === "showRegistrationQR") {
+
+        // Guardar email y plataforma
+        if (request.email) lastEmailUsed = request.email;
+        if (request.platform) lastPlatformUsed = request.platform;
+
+        let overlay = document.getElementById("psy-qr-popup");
+
+        if (!overlay) {
+            overlay = document.createElement("div");
+            overlay.id = "psy-qr-popup";
+            overlay.style.cssText = `
+                position:fixed; top:0; left:0; width:100vw; height:100vh;
+                display:flex; justify-content:center; align-items:center;
+                backdrop-filter:blur(4px); background:rgba(0,0,0,0.55);
+                z-index:999999;
+            `;
+
+            const box = document.createElement("div");
+            box.style.cssText = `
+                padding:20px; border-radius:14px; width:360px; max-width:90%;
+                text-align:center;
+            `;
+
+            const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+            box.style.background = dark ? "#1e1e1e" : "#fff";
+            box.style.color = dark ? "#eee" : "#111";
+
+            box.innerHTML = `
+                <h2>Escanea este QR</h2>
+                <p>Escanéalo con tu celular para continuar el registro.</p>
+                <div id="psy-qr-countdown"></div>
+                <img id="psy-qr-img" style="width:100%; max-width:260px; border-radius:8px;">
+                <br><br>
+                <button id="psy-close-qr" style="padding:10px 18px; background:#0066ff; color:#fff; border:none; border-radius:8px;">Cerrar</button>
+            `;
+
+            overlay.append(box);
+            document.body.append(overlay);
+
+            document.getElementById("psy-close-qr").onclick = () => {
+                clearInterval(window.psyQRInterval);
+                overlay.remove();
+            };
+        }
+
+        document.getElementById("psy-qr-img").src = request.qrData;
+
+        let t = 60;
+        const countdown = document.getElementById("psy-qr-countdown");
+
+        clearInterval(window.psyQRInterval);
+        window.psyQRInterval = setInterval(() => {
+            if (!document.body.contains(overlay)) {
+                clearInterval(window.psyQRInterval);
                 return;
             }
 
-            // Deshabilita y cambia el texto del botón mientras espera
-            button.textContent = '⏳ Esperando...';
-            button.disabled = true;
+            countdown.textContent = `Actualizando QR en ${t}s…`;
+            t--;
 
-            // 1. Enviar solicitud de autenticación al Service Worker
-            chrome.runtime.sendMessage({
-                action: "requestAuthLogin", 
-                email: email,
-                platform: platformName
-            });
-        });
-    }
-}
+            if (t <= 0) {
+                t = 60;
 
-// OBSERVADOR para inyectar el botón
-const observer = new MutationObserver((mutationsList, observer) => {
-    const passwordField = document.querySelector(targetSelector);
-
-    if (passwordField) {
-        injectButton(passwordField);
-        observer.disconnect(); 
-    }
-});
-
-const observerConfig = { childList: true, subtree: true };
-observer.observe(document.body, observerConfig);
-
-const initialPasswordField = document.querySelector(targetSelector);
-if (initialPasswordField) {
-    injectButton(initialPasswordField);
-}
-
-// --- Módulo de Desencriptación Local (SIMULADO) ---
-
-/**
- * Simula el módulo de cálculo local para desencriptar la contraseña.
- * @param {object} keyMaterial - Material de clave y datos cifrados del Servidor Go.
- * @returns {string|null} La contraseña real descifrada.
- */
-function decryptPasswordLocally(keyMaterial) {
-    // **NOTA:** Aquí se debe integrar tu módulo criptográfico (JS/WebAssembly).
-    
-    if (keyMaterial && keyMaterial.derived_key && keyMaterial.encrypted_data) {
-        console.log("Módulo local: Usando material de clave para descifrar.");
-        
-        // --- Lógica Simulación ---
-        const partialKey = keyMaterial.derived_key.slice(0, 4);
-        const partialData = keyMaterial.encrypted_data.slice(-4);
-        
-        // Retorna la contraseña REAL (simulada)
-        return `Contrasena_Real_${partialKey}_${partialData}`;
-        // --- Fin Simulación ---
-    }
-    return null;
-}
-
-// --- Listener para el Flujo Final ---
-
-// Recibe el material de clave del Service Worker
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    // Escucha la acción 'fillKeyMaterial' que trae el material de clave
-    if (request.action === "fillKeyMaterial" && request.keyMaterial) {
-        
-        const button = document.getElementById('extensionButton');
-        const keyMaterial = request.keyMaterial;
-        
-        if (targetPasswordField) {
-            
-            // 1. Llamar al módulo local para desencriptar
-            const realPassword = decryptPasswordLocally(keyMaterial);
-            
-            if (!realPassword) {
-                 alert("Error: Fallo en la desencriptación local.");
-                 // Reestablecer el botón
-                 button.textContent = '🗝️ Reintentar';
-                 button.disabled = false;
-                 return;
+                chrome.runtime.sendMessage({
+                    action: "requestRegistration",
+                    email: lastEmailUsed,
+                    platform: lastPlatformUsed,
+                    tabId: lastTabIdUsed
+                });
             }
+        }, 1000);
 
-            // 2. Rellenar la casilla de contraseña con la clave REAL
-            targetPasswordField.value = realPassword;
-            
-            // 3. Despachar eventos de entrada (necesario)
-            targetPasswordField.dispatchEvent(new Event('input', { bubbles: true }));
-            targetPasswordField.dispatchEvent(new Event('change', { bubbles: true }));
+        return;
+    }
 
-            // 4. Simular el clic en el botón de envío
-            const form = targetPasswordField.closest('form');
-            if (form) {
-                const submitButton = form.querySelector('button[type="submit"], input[type="submit"]');
-                if (submitButton) {
-                    submitButton.click();
-                } else {
-                    form.submit();
-                }
-            }
-            
-            // 5. Limpieza
-            document.getElementById('extensionButton')?.parentNode.remove();
+    // ========================================
+    // LOGIN
+    // ========================================
+    if (request.action === "fillKeyMaterial") {
+
+        const pwd = decryptPasswordLocally(request.keyMaterial);
+        if (pwd && targetPasswordField) {
+            targetPasswordField.value = pwd;
+            targetPasswordField.dispatchEvent(new Event("input", { bubbles: true }));
+            targetPasswordField.dispatchEvent(new Event("change", { bubbles: true }));
+
+            const form = targetPasswordField.closest("form");
+            if (form) form.submit();
         }
-        
-        return true; 
-    } else if (request.action === "authTimeout") {
-        // Manejar el tiempo de espera agotado o error
-        const button = document.getElementById('extensionButton');
-        if (button) {
-             button.textContent = '🗝️ Reintentar';
-             button.disabled = false;
-        }
-        alert(`Fallo en la autenticación: ${request.message || 'Tiempo agotado.'}`);
+        return;
+    }
+
+    // ========================================
+    // ERRORES
+    // ========================================
+    if (request.action === "authTimeout") {
+        alert("Error: " + request.message);
+        return;
     }
 });

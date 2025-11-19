@@ -109,6 +109,7 @@ class PsychologicalAnalyzer:
         f = Fernet(clave_fermet)
 
         valores = seguridad.encriptar_datos(  {name: float(score) for name, score in zip(trait_names, predicted_scores)} , fernet_obj=f)
+        descripcion = seguridad.encriptar_datos( final_description_str, fernet_obj=f )
 
         
         return {

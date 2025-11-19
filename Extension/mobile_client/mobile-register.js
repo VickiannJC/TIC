@@ -36,7 +36,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 2. Registrar Service Worker -> archivo sw.js
         statusMessage.textContent = 'Registrando Service Worker...';
         // NOTA: El path debe ser relativo a la raíz del cliente móvil
-        const registration = await navigator.serviceWorker.register('/mobile_client/sw.js');
+        const registration = await navigator.serviceWorker.register(`${location.origin}/mobile_client/sw.js`);
+
         
         // 3. Solicitar permisos para recibir las notificaciones push 
         statusMessage.textContent = 'Solicitando permisos...';
@@ -46,12 +47,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             throw new Error('Permisos para notificaciones no concedidos');
         }
         
-        // --- 4. Obtener clave VAPID pública ---
-        // Lo ideal sería obtener la clave VAPID pública de tu servidor (ej. /get-config), 
-        // pero por simplicidad, la incluiremos simulada aquí (debería ser la misma que en config.js)
-        const VAPID_KEY = 'TU_CLAVE_PUBLICA_VAPID'; // ¡REEMPLAZAR AQUÍ!
+        //Obtener clave VAPID pública:
+        const VAPID_KEY = 'BHp2vU13C4v9lkA3TiCeDjdrTKx-pjOJKU9danM81efQiPD_6udB7w42xt6DZnz2bAjgf8mdjz-d_Qv7ePkVDOM'; 
 
-        // 5. Suscribir a notificaciones push
+        //Suscribir a notificaciones push
         statusMessage.textContent = 'Generando suscripción push...';
         const subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
