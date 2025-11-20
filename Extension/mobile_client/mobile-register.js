@@ -3,7 +3,7 @@
  * y enviarla al servidor Node.js.
  */
 // URL base de tu servidor Node.js
-const SERVER_BASE_URL = 'http://localhost:3000'; 
+const SERVER_BASE_URL = 'https://undeviously-largest-rashida.ngrok-free.dev'; 
 
 document.addEventListener('DOMContentLoaded', async () => { 
     // Elementos del DOM

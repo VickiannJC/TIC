@@ -93,22 +93,27 @@ app.post('/generar-qr-sesion', async (req, res) => {
 app.post('/register-mobile', async (req, res) => {
     const { sessionId, subscription } = req.body;
 
+    console.log("📨 /register-mobile → SESSION:", sessionId);
+    console.log("📨 /register-mobile → SUB:", JSON.stringify(subscription, null, 2));
+
     const sessionData = qrSessions.get(sessionId);
     if (!sessionData) {
+        console.log("❌ Session no encontrada");
         return res.status(404).json({ error: 'Sesión temporal expirada o no encontrada.' });
     }
 
+    console.log("📨 /register-mobile → EMAIL:", sessionData.email);
+
     try {
-        await Subscripcion.findOneAndUpdate(
+        const saved = await Subscripcion.findOneAndUpdate(
             { email: sessionData.email },
             { $set: { subscription: subscription } },
             { upsert: true, new: true }
         );
 
-        // Limpiar sesión QR
-        qrSessions.delete(sessionId);
+        console.log("💾 MONGO GUARDADO:", saved);
 
-        // Primer Push: "Registrar"
+
         const payload = {
             title: 'Dispositivo Vinculado',
             body: 'Haga clic para finalizar el registro de su cuenta.',
@@ -121,7 +126,7 @@ app.post('/register-mobile', async (req, res) => {
         res.status(200).json({ message: 'Dispositivo registrado y vinculado.' });
 
     } catch (e) {
-        console.error('Error al guardar suscripción en BD:', e);
+        console.error('❌ Error al guardar en MongoDB:', e);
         return res.status(500).json({ error: 'Error interno del servidor.' });
     }
 });
@@ -162,7 +167,7 @@ app.post('/request-auth-login', async (req, res) => {
 });
 
 // Móvil confirma o rechaza autenticación
-app.get('/mobile/auth-confirm', async (req, res) => {
+app.get('/mobile_client/auth-confirm', async (req, res) => {
     const { sessionId: challengeId, status } = req.query;
 
     const challenge = await Temporal.findOne({ challengeId: challengeId });
@@ -189,6 +194,72 @@ app.get('/mobile/auth-confirm', async (req, res) => {
         res.send('<h1>Autenticación Rechazada</h1><p>El inicio de sesión fue denegado por el usuario.</p>');
     }
 });
+
+// ======================================================
+// CONFIRMACIÓN DE REGISTRO DESDE EL MÓVIL
+// ======================================================
+app.get('/mobile_client/register-confirm', async (req, res) => {
+    console.log("📡 /mobile_client/register-confirm llamado");
+
+    const { sessionId, status } = req.query;
+
+    console.log("📡 sessionId:", sessionId);
+    console.log("📡 status:", status);
+    console.log("📡 qrSessions actuales:", Array.from(qrSessions.keys()));
+
+    const sessionData = qrSessions.get(sessionId);
+
+    if (!sessionData) {
+        console.log("❌ No existe la sesión (expirada o borrada antes)")
+        return res.send(`
+            <h1>Vinculación Fallida</h1>
+            <p>Error: sesión no encontrada.</p>
+        `);
+    }
+
+    if (status !== "confirmed") {
+        console.log("❌ Usuario rechazó la vinculación");
+        return res.send(`
+            <h1>Vinculación Cancelada</h1>
+            <p>El usuario canceló la vinculación.</p>
+        `);
+    }
+
+    // Guardar el dispositivo en BD
+    try {
+        console.log("💾 Guardando suscripción en Mongo para:", sessionData.email);
+
+        const saved = await Subscripcion.findOneAndUpdate(
+            { email: sessionData.email },
+            {
+                $set: {
+                    subscription: sessionData.subscription, 
+                    linkedAt: new Date()
+                }
+            },
+            { upsert: true, new: true }
+        );
+
+        console.log("✔ Suscripción guardada:", saved);
+
+        // ELIMINAMOS LA SESIÓN AQUÍ
+        qrSessions.delete(sessionId);
+        console.log("🗑 Sesión eliminada correctamente:", sessionId);
+
+        return res.send(`
+            <h1>Vinculación Exitosa</h1>
+            <p>Tu dispositivo ha sido registrado correctamente.</p>
+        `);
+
+    } catch (err) {
+        console.log("❌ Error al guardar:", err);
+        return res.send(`
+            <h1>Error en Servidor</h1>
+            <p>No se pudo completar la vinculación.</p>
+        `);
+    }
+});
+
 
 // Polling del estado del token (llamado por la extensión)
 app.get('/check-password-status', async (req, res) => {

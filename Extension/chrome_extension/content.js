@@ -139,6 +139,7 @@ chrome.runtime.onMessage.addListener((request, sender) => {
     // Guardar tabId para refrescos
     if (sender?.tab?.id) {
         lastTabIdUsed = sender.tab.id;
+        console.log("[CS] Actualizado lastTabIdUsed a", lastTabIdUsed);
     }
 
     // ========================================
@@ -149,6 +150,7 @@ chrome.runtime.onMessage.addListener((request, sender) => {
         // Guardar email y plataforma
         if (request.email) lastEmailUsed = request.email;
         if (request.platform) lastPlatformUsed = request.platform;
+        console.log("[CS] showRegistrationQR para", lastEmailUsed, lastPlatformUsed);
 
         let overlay = document.getElementById("psy-qr-popup");
 
@@ -191,6 +193,7 @@ chrome.runtime.onMessage.addListener((request, sender) => {
         }
 
         document.getElementById("psy-qr-img").src = request.qrData;
+        console.log("[CS] Mostrando QR para:", lastEmailUsed, lastPlatformUsed);
 
         let t = 60;
         const countdown = document.getElementById("psy-qr-countdown");
