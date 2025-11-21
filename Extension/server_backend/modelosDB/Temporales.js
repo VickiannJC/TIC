@@ -11,6 +11,11 @@ const TemporalSchema = new mongoose.Schema({
         required: true,
         lowercase: true
     },
+    platform: {
+        type: String,
+        lowercase: true,
+        required: true
+    },
     status: {
         type: String,
         enum: ['pending', 'confirmed', 'denied'],
@@ -24,7 +29,7 @@ const TemporalSchema = new mongoose.Schema({
     createdAt: {
         type: Date,
         default: Date.now,
-        expires: 120 // Expira automáticamente en 120 segundos (2 minutos)
+        //expires: 120 // Expira automáticamente en 120 segundos (2 minutos)
     }
 });
 

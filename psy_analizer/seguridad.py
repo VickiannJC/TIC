@@ -29,7 +29,7 @@ def verificar_id_usuario(id_usuario: str, hash_almacenado: str, salt_almacenado:
             algoritmo,
             id_bytes,
             salt,
-            iteracione,
+            iteraciones,
             dklen = dklen
         ).hex()
         

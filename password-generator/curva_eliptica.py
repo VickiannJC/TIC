@@ -7,7 +7,30 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import serialization
 
+# Desemcriptar la contraseña usando curva elíptica
+def ecc_desencriptar_password (clave_privada, contrasena):
+    try: 
+        ephemeral_public = ec.EllipticCurvePublicKey.from_encoded_point(
+            ec.SECP256R1(), contrasena["ephemeral_public"]
+        )
+        clave_compartida = clave_privada.exchange(ec.ECDH(), ephemeral_public)
 
+
+        clave_derivada = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=b"encriptacion ecc password",
+            backend=default_backend(),
+        ).derive(clave_compartida)
+
+        cifrador = Cipher(algorithms.AES(clave_derivada), modes.GCM(contrasena["iv"], contrasena["tag"]), backend=default_backend())
+        desencriptador = cifrador.decryptor()
+        texto_plano = desencriptador.update(contrasena["ciphertext"]) + desencriptador.finalize()
+        return texto_plano.decode()
+    except Exception as e:
+        print(f"Error durante la desencriptación ECC: {e}")
+        return None
 #instalar la librería cryptography si no está instalada
 #pip install cryptography
 
@@ -63,30 +86,7 @@ def ecc_encriptar_password(clave_publica, contrasena):
         print(f"Error durante la encriptación ECC: {e}")
         return None
     
-# Desemcriptar la contraseña usando curva elíptica
-def ecc_desencriptar_password (clave_privada, contrasena):
-    try: 
-        ephemeral_public = ec.EllipticCurvePublicKey.from_encoded_point(
-            ec.SECP256R1(), contrasena["ephemeral_public"]
-        )
-        clave_compartida = clave_privada.exchange(ec.ECDH(), ephemeral_public)
-
-
-        clave_derivada = HKDF(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=None,
-            info=b"encriptacion ecc password",
-            backend=default_backend(),
-        ).derive(clave_compartida)
-
-        cifrador = Cipher(algorithms.AES(clave_derivada), modes.GCM(contrasena["iv"], contrasena["tag"]), backend=default_backend())
-        desencriptador = cifrador.decryptor()
-        texto_plano = desencriptador.update(contrasena["ciphertext"]) + desencriptador.finalize()
-        return texto_plano.decode()
-    except Exception as e:
-        print(f"Error durante la desencriptación ECC: {e}")
-        return None 
+ 
     
 # Guardar contraseña en json 
 def guardar_en_json(id_usuario, data_encriptada, archivo: str, plataforma:str):

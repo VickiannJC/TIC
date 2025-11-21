@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+motor
+cryptography
+argon2-cffi
+python-dotenv
+

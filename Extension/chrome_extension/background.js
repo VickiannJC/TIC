@@ -2,26 +2,32 @@
 // CONFIG SERVERS
 // ==========================
 const SERVER_BASE_URL = "https://undeviously-largest-rashida.ngrok-free.dev";
-const KEY_MANAGER_URL = "http://localhost:8080";
-
 const POLLING_INTERVAL = 3000;
 const MAX_TIMEOUT = 60000;
+
+
 
 // ==========================
 // CONTROL DE TABS ACTIVOS
 // ==========================
 const activeTabs = new Set();
-let lastTabId = null; // ← esencial para QR refresh
+let lastTabId = null; // último tab conocido
 
 function safeSendMessage(tabId, payload) {
+    if (tabId == null) {
+        console.warn("[SW] safeSendMessage sin tabId, no envío:", payload);
+        return;
+    }
     try {
-        if (activeTabs.has(tabId)) {
-            chrome.tabs.sendMessage(tabId, payload);
-        } else {
-            console.warn("[SW] No se envió mensaje: tabId inválido o sin content script activo.", tabId);
-        }
+        chrome.tabs.sendMessage(tabId, payload, () => {
+            // En MV3 es normal que falle si el content ya no está; lo registramos
+            if (chrome.runtime.lastError) {
+                console.warn("[SW] Error enviando mensaje al tab",
+                    tabId, ":", chrome.runtime.lastError.message);
+            }
+        });
     } catch (err) {
-        console.warn("[SW] Error enviando mensaje:", err);
+        console.warn("[SW] Excepción enviando mensaje al tab", tabId, ":", err);
     }
 }
 
@@ -77,6 +83,10 @@ async function startAuthFlow(email, platform, tabId) {
             if (resp.status === 404) throw new Error("Dispositivo no vinculado");
             throw new Error("Error al iniciar Push Auth");
         }
+        const contentType = resp.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+            throw new Error("Servidor devolvió HTML/Texto en lugar de JSON");
+        }
 
         await resp.json();
         console.log("[SW] Push de login enviado, iniciando polling…");
@@ -84,6 +94,7 @@ async function startAuthFlow(email, platform, tabId) {
         startTokenPolling(email, platform, tabId);
 
     } catch (err) {
+        console.error("[SW] Error en flujo de login:", err);
         safeSendMessage(tabId, {
             action: "authTimeout",
             message: err.message
@@ -95,7 +106,6 @@ async function startAuthFlow(email, platform, tabId) {
 // REGISTRO – GENERAR QR
 // ==========================
 async function startRegistrationFlow(email, platform, tabId) {
-
     try {
         const resp = await fetch(`${SERVER_BASE_URL}/generar-qr-sesion`, {
             method: "POST",
@@ -103,12 +113,31 @@ async function startRegistrationFlow(email, platform, tabId) {
             body: JSON.stringify({ email, platform })
         });
 
-        if (!resp.ok) throw new Error("Error al generar QR");
+        const contentType = resp.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+            const txt = await resp.text();
+            throw new Error("Respuesta no JSON: " + txt.substring(0,200));
+        }
+
+
+
+        if (!resp.ok) {
+            
+            const errData = await resp.json();
+            if (resp.status === 409 && errData.error === "email_exists") {
+                safeSendMessage(tabId, {
+                    action: "emailAlreadyRegistered",
+                    message: errData.message
+                });
+                return;
+            }
+            throw new Error(errData.error || "Error al generar QR");
+        }
 
         const data = await resp.json();
         const qrData = data.qr;
 
-        console.log("[SW] QR recibido desde backend para:", email);
+        console.log("[SW] QR recibido desde backend para:", email, "en tab", tabId);
 
         safeSendMessage(tabId, {
             action: "showRegistrationQR",
@@ -118,7 +147,7 @@ async function startRegistrationFlow(email, platform, tabId) {
         });
 
     } catch (err) {
-        console.error("[SW] Error en registro:", err);
+        console.error("[SW] Error en flujo de registro:", err);
 
         safeSendMessage(tabId, {
             action: "authTimeout",
@@ -136,7 +165,7 @@ function startTokenPolling(email, platform, tabId) {
 
     const timeoutId = setTimeout(() => {
         timedOut = true;
-        clearInterval(intervalId);
+        if (intervalId !== null) clearInterval(intervalId);
         safeSendMessage(tabId, {
             action: "authTimeout",
             message: "Tiempo de espera agotado (60s)."
@@ -151,6 +180,11 @@ function startTokenPolling(email, platform, tabId) {
                 `${SERVER_BASE_URL}/check-password-status?email=${encodeURIComponent(email)}`
             );
 
+            const contentType = resp.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                throw new Error("Servidor devolvió HTML/Texto en lugar de JSON");
+            }
+
             const data = await resp.json();
 
             if (data.status === "authenticated" && data.token) {
@@ -161,13 +195,18 @@ function startTokenPolling(email, platform, tabId) {
                     data.token, email, platform
                 );
 
-                safeSendMessage(tabId, {
-                    action: "fillKeyMaterial",
-                    keyMaterial
-                });
-            }
-
-            if (data.status === "denied") {
+                if (keyMaterial) {
+                    safeSendMessage(tabId, {
+                        action: "fillKeyMaterial",
+                        keyMaterial
+                    });
+                } else {
+                    safeSendMessage(tabId, {
+                        action: "authTimeout",
+                        message: "Fallo al obtener material de clave."
+                    });
+                }
+            } else if (data.status === "denied") {
                 clearTimeout(timeoutId);
                 clearInterval(intervalId);
 
@@ -178,6 +217,7 @@ function startTokenPolling(email, platform, tabId) {
             }
 
         } catch (err) {
+            console.error("[SW] Error en polling:", err);
             clearTimeout(timeoutId);
             clearInterval(intervalId);
 
@@ -194,29 +234,31 @@ function startTokenPolling(email, platform, tabId) {
 // LISTENER PRINCIPAL MV3
 // ==========================
 chrome.runtime.onMessage.addListener((request, sender) => {
-
-    // Registrar pestaña activa
+    // Handshake: content.js avisa que está listo
     if (request.action === "contentReady" && sender.tab) {
         activeTabs.add(sender.tab.id);
-        lastTabId = sender.tab.id;     // ← RECORDAR TABID PARA REFRESCOS
+        lastTabId = sender.tab.id;
+        console.log("[SW] contentReady desde tab", sender.tab.id);
         return;
     }
 
-    // Si el mensaje viene sin sender.tab (ej. timer 60s)
-    const tabId = sender.tab ? sender.tab.id : lastTabId;
+    // Determinar el tabId real
+    const tabId = sender.tab?.id ?? request.tabId ?? lastTabId;
 
     if (!tabId) {
-        console.warn("[SW] No hay tabId disponible para procesar la acción.");
+        console.warn("[SW] No hay tabId disponible para procesar la acción:", request.action);
         return;
     }
 
     const { email, platform } = request;
 
     if (request.action === "requestAuthLogin") {
+        console.log("[SW] requestAuthLogin para", email, "en tab", tabId);
         startAuthFlow(email, platform, tabId);
     }
 
     if (request.action === "requestRegistration") {
+        console.log("[SW] requestRegistration para", email, "en tab", tabId);
         startRegistrationFlow(email, platform, tabId);
     }
 });

@@ -9,9 +9,11 @@ const path = require('path');
 // Modelos de MongoDB
 const Subscripcion = require('./modelosDB/Subscripciones');
 const Temporal = require('./modelosDB/temporales');
+const QRSession = require('./modelosDB/QRSession');
 
 // Configuracion y claves VAPID
 const config = require('./config');
+const { platform } = require('os');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -32,8 +34,6 @@ mongoose.connect(config.MONGODB_URI)
 app.use(cors());
 app.use(bodyParser.json());
 
-// Almacenar datos temporales en memoria para el QR (registro)
-const qrSessions = new Map();
 
 // Genera un TOKEN DE DESBLOQUEO Temporal (para login)
 function generateToken() {
@@ -63,29 +63,60 @@ async function sendPushNotification(subscription, payload, temporalID) {
 
 app.post('/generar-qr-sesion', async (req, res) => {
     const { email, platform } = req.body;
-    const temporalID = 'SESS_' + Math.random().toString(36).substring(2, 9);
 
-    // Detectar dinámicamente host real (ngrok, dominio, ip, local)
-    const proto = req.headers["x-forwarded-proto"] || req.protocol;
-    const host = req.headers["x-forwarded-host"] || req.headers.host;
+    try {
+        // Revisar si el email ya tiene un dispositivo vinculado
+        const existing = await Subscripcion.findOne({ email });
 
-    const baseUrl = `${proto}://${host}`;
+        if (existing) {
+            console.log("❌ Registro bloqueado: email ya existe →", email);
 
-    // URL REAL accesible desde el celular
-    const registerUrl = `${baseUrl}/mobile_client/register-mobile.html?sessionId=${temporalID}`;
+            return res.status(409).json({
+                error: "email_exists",
+                message: "Este correo ya está registrado y vinculado a un dispositivo."
+            });
+        }
 
-    const qrDataUrl = await qrcode.toDataURL(registerUrl);
+        //Eliminar sesiones previas del email
+        await QRSession.deleteMany({ email });
 
-    // Guardar sesión temporal
-    qrSessions.set(temporalID, { email, platform, estado: 'pendiente' });
+        //Crear el nuevo session ID
+        const sessionId = 'SESS_' + Math.random().toString(36).substring(2, 9);
 
-    res.status(200).json({
-        qr: qrDataUrl,
-        sessionId: temporalID,
-        registerUrl,
-        vapidPublicKey: config.VAPID_PUBLIC_KEY,
-        platform
-    });
+        // Detectar dinámicamente host real (ngrok, dominio, ip, local)
+        const proto = req.headers["x-forwarded-proto"] || req.protocol;
+        const host = req.headers["x-forwarded-host"] || req.headers.host;
+
+        const baseUrl = `${proto}://${host}`;
+
+        // URL REAL accesible desde el celular
+        const registerUrl = `${baseUrl}/mobile_client/register-mobile.html?sessionId=${sessionId}`;
+
+        const qrDataUrl = await qrcode.toDataURL(registerUrl);
+
+        // Guardar nueva sesión
+        await QRSession.create({
+            sessionId,
+            email,
+            platform,
+            estado: "pending"
+        });
+
+        
+        console.log("🟢 Sesión nueva creada:", sessionId);
+        console.log("🔐 Sesiones activas ahora:", [...qrSessions.keys()]);
+
+        res.status(200).json({
+             qr: qrDataUrl,
+            sessionId,
+            registerUrl
+
+        });
+
+    } catch (err) {
+        console.error("❌ Error en /generar-qr-sesion:", err);
+        return res.status(500).json({ error: "Error interno del servidor." });
+    }
 });
 
 
@@ -93,43 +124,67 @@ app.post('/generar-qr-sesion', async (req, res) => {
 app.post('/register-mobile', async (req, res) => {
     const { sessionId, subscription } = req.body;
 
-    console.log("📨 /register-mobile → SESSION:", sessionId);
-    console.log("📨 /register-mobile → SUB:", JSON.stringify(subscription, null, 2));
+    console.log("📨 /register-mobile llamado");
+    console.log("📨 BODY:", req.body);
 
-    const sessionData = qrSessions.get(sessionId);
+    const sessionData = await QRSession.findOne({ sessionId });
+
     if (!sessionData) {
-        console.log("❌ Session no encontrada");
-        return res.status(404).json({ error: 'Sesión temporal expirada o no encontrada.' });
+         return res.status(404).json({
+            error: "session_not_found",
+            message: "Este QR ya expiró o no existe."
+        });
     }
 
-    console.log("📨 /register-mobile → EMAIL:", sessionData.email);
+    console.log("📨 EMAIL ASOCIADO:", sessionData.email);
 
+    // -------------- VALIDACIÓN DE EMAIL DUPLICADO --------------
+    const existing = await Subscripcion.findOne({ email: sessionData.email });
+
+    if (existing) {
+        console.log("❌ BLOQUEADO: email YA existe:", sessionData.email);
+
+        return res.status(409).json({
+            error: "email_exists",
+            message: "Este correo ya está registrado en otro dispositivo."
+        });
+    }
+
+    // -------------- GUARDAR REGISTRO NUEVO ---------------------
     try {
-        const saved = await Subscripcion.findOneAndUpdate(
+        await Subscripcion.findOneAndUpdate(
             { email: sessionData.email },
-            { $set: { subscription: subscription } },
-            { upsert: true, new: true }
+            {
+                $set: {
+                    subscription,
+                    linkedAt: new Date()
+                }
+            },
+            { upsert: true }
         );
 
-        console.log("💾 MONGO GUARDADO:", saved);
 
+        console.log("✔ REGISTRO GUARDADO:", saved);
+        await QRSession.deleteMany({ email: sessionData.email });
 
+        // enviar push inicial
         const payload = {
             title: 'Dispositivo Vinculado',
-            body: 'Haga clic para finalizar el registro de su cuenta.',
+            body: 'Haga clic para finalizar el registro.',
             actionType: 'register',
             sessionId: sessionId
         };
 
-        sendPushNotification(subscription, payload, sessionId);
+        await sendPushNotification(subscription, payload, sessionId);
 
-        res.status(200).json({ message: 'Dispositivo registrado y vinculado.' });
+        res.status(200).json({ message: "registro_ok" });
 
     } catch (e) {
-        console.error('❌ Error al guardar en MongoDB:', e);
-        return res.status(500).json({ error: 'Error interno del servidor.' });
+        console.error("❌ ERROR AL GUARDAR:", e);
+        res.status(500).json({ error: "db_error" });
     }
 });
+
 
 // ===============================
 // ENDPOINTS AUTENTICACIÓN (LOGIN)
@@ -207,21 +262,22 @@ app.get('/mobile_client/register-confirm', async (req, res) => {
     console.log("📡 status:", status);
     console.log("📡 qrSessions actuales:", Array.from(qrSessions.keys()));
 
-    const sessionData = qrSessions.get(sessionId);
+    const sessionData = await QRSession.findOne({ sessionId });
 
     if (!sessionData) {
-        console.log("❌ No existe la sesión (expirada o borrada antes)")
+        console.log("❌ No existe la sesión (Probablemente QR viejo)")
         return res.send(`
-            <h1>Vinculación Fallida</h1>
-            <p>Error: sesión no encontrada.</p>
+            <h1>QR Expirado</h1>
+            <p>El QR que escaneaste ya no es válido.</p>
         `);
     }
 
+
     if (status !== "confirmed") {
-        console.log("❌ Usuario rechazó la vinculación");
+        await QRSession.deleteOne({ sessionId });
         return res.send(`
-            <h1>Vinculación Cancelada</h1>
-            <p>El usuario canceló la vinculación.</p>
+            <h1>Vinculación cancelada</h1>
+            <p>Has cancelado el proceso.</p>
         `);
     }
 
@@ -229,22 +285,23 @@ app.get('/mobile_client/register-confirm', async (req, res) => {
     try {
         console.log("💾 Guardando suscripción en Mongo para:", sessionData.email);
 
-        const saved = await Subscripcion.findOneAndUpdate(
+        await Subscripcion.findOneAndUpdate(
             { email: sessionData.email },
             {
                 $set: {
-                    subscription: sessionData.subscription, 
+                    subscription: sessionData.subscription,
                     linkedAt: new Date()
                 }
             },
-            { upsert: true, new: true }
+            { upsert: true}
         );
 
         console.log("✔ Suscripción guardada:", saved);
 
-        // ELIMINAMOS LA SESIÓN AQUÍ
-        qrSessions.delete(sessionId);
-        console.log("🗑 Sesión eliminada correctamente:", sessionId);
+        await QRSession.deleteMany({email:sessionData.email});
+
+
+        console.log("🗑 Sesiones eliminadas para el email:", sessionData.email);
 
         return res.send(`
             <h1>Vinculación Exitosa</h1>
@@ -254,7 +311,7 @@ app.get('/mobile_client/register-confirm', async (req, res) => {
     } catch (err) {
         console.log("❌ Error al guardar:", err);
         return res.send(`
-            <h1>Error en Servidor</h1>
+            <h1>Error Interno</h1>
             <p>No se pudo completar la vinculación.</p>
         `);
     }
@@ -271,7 +328,7 @@ app.get('/check-password-status', async (req, res) => {
     }).sort({ createdAt: -1 });
 
     if (confirmedChallenge) {
-        await Temporal.deleteOne({ _id: confirmedChallenge._id });
+        //await Temporal.deleteOne({ _id: confirmedChallenge._id });
 
         return res.status(200).json({
             status: 'authenticated',
@@ -285,7 +342,7 @@ app.get('/check-password-status', async (req, res) => {
     });
 
     if (activeChallenge && activeChallenge.status === 'denied') {
-        await Temporal.deleteOne({ _id: activeChallenge._id });
+        //await Temporal.deleteOne({ _id: activeChallenge._id });
         return res.status(200).json({ status: 'denied' });
     }
 
