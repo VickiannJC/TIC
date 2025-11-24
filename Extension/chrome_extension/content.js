@@ -54,6 +54,14 @@ function showPsyModal(message, isError = true) {
             z-index:999999;
         `;
 
+        //  bloquear clics que atraviesan
+        ["click", "touchstart", "pointerdown"].forEach(ev => {
+            overlay.addEventListener(ev, e => {
+                e.stopPropagation();
+                e.preventDefault();
+            });
+        });
+
         const box = document.createElement("div");
         box.id = "psy-alert-box";
         box.style.cssText = `
@@ -77,18 +85,38 @@ function showPsyModal(message, isError = true) {
             </button>
         `;
 
+        // bloquear clics dentro de la caja
+        ["click", "touchstart", "pointerdown"].forEach(ev => {
+            box.addEventListener(ev, e => {
+                e.stopPropagation();
+            });
+        });
+
         overlay.append(box);
         document.body.append(overlay);
 
-        document.getElementById("psy-alert-close").onclick = () => overlay.remove();
+        document.getElementById("psy-alert-close").addEventListener("click", (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            overlay.remove();
+            resetAuthButtons();
+        });
     }
 
     document.getElementById("psy-alert-text").innerText = message;
 }
 
+// Listener único para resetear estado cuando el usuario escribe email
+document.addEventListener("input", (e) => {
+    if (e.target.matches('input[type="email"], input#email, input[name="email"]')) {
+        resetPsyState();
+    }
+});
+
+
 
 // ================================================
-// 3) INYECTAR BOTÓN
+// INYECTAR BOTÓN
 // ================================================
 function injectButton(passwordField) {
     if (document.getElementById("psy-main-button")) return;
@@ -140,12 +168,7 @@ function injectButton(passwordField) {
         const emailField = document.querySelector(emailSelector);
         // Reiniciar estado si el usuario cambia el email
 
-        if (emailField) {
-            emailField.addEventListener("input", () => {
-                console.log("[CS] Email cambiado, reseteando estado interno.");
-                resetPsyState();
-            });
-        }
+       
         if (!emailField) {
             showPsyModal("No se encontró un campo de correo electrónico.");
             return null;
@@ -171,7 +194,12 @@ function injectButton(passwordField) {
 
 
 
-    btnRegister.onclick = () => {
+    btnRegister.addEventListener("click", (e) => {
+
+        // Bloquear clics fantasma
+        e.stopPropagation();
+        e.preventDefault();
+
         const info = gatherInfo();
         if (!info) return;
 
@@ -186,9 +214,14 @@ function injectButton(passwordField) {
             email: lastEmailUsed,
             platform: lastPlatformUsed
         });
-    };
+    });
 
-    btnLogin.onclick = () => {
+    btnLogin.addEventListener("click" ,(e) => {
+
+        // Bloquear clics fantasma
+        e.stopPropagation();
+        e.preventDefault();
+
         const info = gatherInfo();
         if (!info) return;
 
@@ -200,8 +233,27 @@ function injectButton(passwordField) {
             email: info.email,
             platform: info.platform
         });
-    };
+    });
 }
+
+//======================================================================
+// Función para resetear botones y que el usuario no quede atrapado
+//======================================================================
+function resetAuthButtons() {
+    const btnRegister = document.getElementById("psy-register-button");
+    const btnLogin = document.getElementById("psy-login-button");
+
+    if (btnRegister) {
+        btnRegister.disabled = false;
+        btnRegister.textContent = "Registro";
+    }
+
+    if (btnLogin) {
+        btnLogin.disabled = false;
+        btnLogin.textContent = "Inicio de sesión";
+    }
+}
+
 
 // Inject al detectar campo password
 const obs = new MutationObserver(() => {
@@ -235,9 +287,15 @@ chrome.runtime.onMessage.addListener((request, sender) => {
         console.log("[CS] Actualizado lastTabIdUsed a", lastTabIdUsed);
     }
 
-    // ========================================
+    //Refrescar botones para que no se bloqueen
+    if (request.action === "resetAuthButtons") {
+    resetAuthButtons();
+    return;
+    }
+
+
+
     // REGISTRO → POPUP QR
-    // ========================================
     if (request.action === "showRegistrationQR" && request.qrData) {
 
         window.psyLastEmail = request.email;
@@ -281,10 +339,14 @@ chrome.runtime.onMessage.addListener((request, sender) => {
             overlay.append(box);
             document.body.append(overlay);
 
-            document.getElementById("psy-close-qr").onclick = () => {
+            document.getElementById("psy-close-qr").addEventListener("click", (e) => {
+                e.stopPropagation();
+                e.preventDefault();
                 clearInterval(window.psyQRInterval);
                 overlay.remove();
-            };
+                resetAuthButtons();
+            });
+
         }
 
         document.getElementById("psy-qr-img").src = request.qrData;
@@ -341,11 +403,13 @@ chrome.runtime.onMessage.addListener((request, sender) => {
     // ========================================
     if (request.action === "authTimeout") {
         alert("Error: " + request.message);
+        resetAuthButtons();
         return;
     }
 
     if (request.action === "emailAlreadyRegistered") {
         showPsyModal(request.message || "Este correo ya está registrado.");
+        resetAuthButtons();
         return;
     }
 

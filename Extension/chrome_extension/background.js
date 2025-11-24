@@ -99,6 +99,10 @@ async function startAuthFlow(email, platform, tabId) {
             action: "authTimeout",
             message: err.message
         });
+        safeSendMessage(tabId, {
+            action: "resetAuthButtons"
+        });
+
     }
 }
 
@@ -116,13 +120,13 @@ async function startRegistrationFlow(email, platform, tabId) {
         const contentType = resp.headers.get("content-type") || "";
         if (!contentType.includes("application/json")) {
             const txt = await resp.text();
-            throw new Error("Respuesta no JSON: " + txt.substring(0,200));
+            throw new Error("Respuesta no JSON: " + txt.substring(0, 200));
         }
 
 
 
         if (!resp.ok) {
-            
+
             const errData = await resp.json();
             if (resp.status === 409 && errData.error === "email_exists") {
                 safeSendMessage(tabId, {
@@ -153,6 +157,10 @@ async function startRegistrationFlow(email, platform, tabId) {
             action: "authTimeout",
             message: err.message
         });
+        safeSendMessage(tabId, {
+            action: "resetAuthButtons"
+        });
+
     }
 }
 
@@ -170,6 +178,10 @@ function startTokenPolling(email, platform, tabId) {
             action: "authTimeout",
             message: "Tiempo de espera agotado (60s)."
         });
+        safeSendMessage(tabId, {
+            action: "resetAuthButtons"
+        });
+
     }, MAX_TIMEOUT);
 
     intervalId = setInterval(async () => {
@@ -205,6 +217,10 @@ function startTokenPolling(email, platform, tabId) {
                         action: "authTimeout",
                         message: "Fallo al obtener material de clave."
                     });
+                    safeSendMessage(tabId, {
+                        action: "resetAuthButtons"
+                    });
+
                 }
             } else if (data.status === "denied") {
                 clearTimeout(timeoutId);
@@ -214,6 +230,10 @@ function startTokenPolling(email, platform, tabId) {
                     action: "authTimeout",
                     message: "Autenticación rechazada por el usuario."
                 });
+                safeSendMessage(tabId, {
+                    action: "resetAuthButtons"
+                });
+
             }
 
         } catch (err) {
@@ -225,6 +245,10 @@ function startTokenPolling(email, platform, tabId) {
                 action: "authTimeout",
                 message: "Error de red durante autenticación."
             });
+            safeSendMessage(tabId, {
+                action: "resetAuthButtons"
+            });
+
         }
 
     }, POLLING_INTERVAL);

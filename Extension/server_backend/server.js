@@ -13,7 +13,7 @@ const QRSession = require('./modelosDB/QRSession');
 
 // Configuracion y claves VAPID
 const config = require('./config');
-const { platform } = require('os');
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -41,7 +41,7 @@ function generateToken() {
 }
 
 // Enviar notificación push al usuario
-async function sendPushNotification(subscription, payload, temporalID) {
+async function sendPushNotification(subscription, payload) {
     try {
         await webpush.sendNotification(subscription, JSON.stringify(payload));
         console.log('Notificación enviada con éxito');
@@ -65,6 +65,13 @@ app.post('/generar-qr-sesion', async (req, res) => {
     const { email, platform } = req.body;
 
     try {
+
+         // LIMPIEZA COMPLETA — evitar estados corruptos
+        await QRSession.deleteMany({ email });
+        await Temporal.deleteMany({ email });
+
+        console.log("🧹 Limpieza previa completada para:", email);
+
         // Revisar si el email ya tiene un dispositivo vinculado
         const existing = await Subscripcion.findOne({ email });
 
@@ -102,12 +109,11 @@ app.post('/generar-qr-sesion', async (req, res) => {
             estado: "pending"
         });
 
-        
-        console.log("🟢 Sesión nueva creada:", sessionId);
-        console.log("🔐 Sesiones activas ahora:", [...qrSessions.keys()]);
+
+        console.log("Sesión nueva creada:", sessionId);
 
         res.status(200).json({
-             qr: qrDataUrl,
+            qr: qrDataUrl,
             sessionId,
             registerUrl
 
@@ -127,61 +133,51 @@ app.post('/register-mobile', async (req, res) => {
     console.log("📨 /register-mobile llamado");
     console.log("📨 BODY:", req.body);
 
-    const sessionData = await QRSession.findOne({ sessionId });
-
-    if (!sessionData) {
-         return res.status(404).json({
-            error: "session_not_found",
-            message: "Este QR ya expiró o no existe."
-        });
-    }
-
-    console.log("📨 EMAIL ASOCIADO:", sessionData.email);
-
-    // -------------- VALIDACIÓN DE EMAIL DUPLICADO --------------
-    const existing = await Subscripcion.findOne({ email: sessionData.email });
-
-    if (existing) {
-        console.log("❌ BLOQUEADO: email YA existe:", sessionData.email);
-
-        return res.status(409).json({
-            error: "email_exists",
-            message: "Este correo ya está registrado en otro dispositivo."
-        });
-    }
-
-    // -------------- GUARDAR REGISTRO NUEVO ---------------------
     try {
-        await Subscripcion.findOneAndUpdate(
-            { email: sessionData.email },
-            {
-                $set: {
-                    subscription,
-                    linkedAt: new Date()
-                }
-            },
-            { upsert: true }
-        );
+
+        const sessionData = await QRSession.findOne({ sessionId });
 
 
-        console.log("✔ REGISTRO GUARDADO:", saved);
-        await QRSession.deleteMany({ email: sessionData.email });
+        if (!sessionData) {
+            return res.status(404).json({
+                error: "session_not_found",
+                message: "Este QR ya expiró o no existe."
+            });
+        }
 
-        // enviar push inicial
+        // SOLO GUARDAMOS TEMPORALMENTE la suscripción en QRSession (NO registrar aún)
+        sessionData.subscription = subscription;
+        await sessionData.save();
+        console.log("Subscripción guardada temporalmente para:", sessionData.email);
+
+
+        // -------------- VALIDACIÓN DE EMAIL DUPLICADO --------------
+        const existing = await Subscripcion.findOne({ email: sessionData.email });
+
+        if (existing) {
+            console.log("❌ BLOQUEADO: email YA existe:", sessionData.email);
+
+            return res.status(409).json({
+                error: "email_exists",
+                message: "Este correo ya está registrado en otro dispositivo."
+            });
+        }
+
+        // Enviar push para confirmar registro
         const payload = {
-            title: 'Dispositivo Vinculado',
-            body: 'Haga clic para finalizar el registro.',
+            title: 'Confirmar Registro',
+            body: 'Toca para confirmar la vinculación del dispositivo.',
             actionType: 'register',
-            sessionId: sessionId
+            sessionId
         };
 
-        await sendPushNotification(subscription, payload, sessionId);
+        await sendPushNotification(subscription, payload);
 
-        res.status(200).json({ message: "registro_ok" });
+        return res.status(200).json({ message: "pending_confirmation" });
 
-    } catch (e) {
-        console.error("❌ ERROR AL GUARDAR:", e);
-        res.status(500).json({ error: "db_error" });
+    } catch (err) {
+        console.error(" Error en /register-mobile:", err);
+        return res.status(500).json({ error: "server_error" });
     }
 });
 
@@ -232,7 +228,7 @@ app.get('/mobile_client/auth-confirm', async (req, res) => {
     }
 
     if (challenge.status !== 'pending') {
-        return res.send(`<h1>Acción Previa</h1><p>Este desafío ya fue procesado: ${challenge.status}.</p>`);
+        return res.send(`<h1>Acción Previa</h1><p>Este desafío ya fue procesado.</p>`);
     }
 
     if (status === 'confirmed') {
@@ -260,9 +256,19 @@ app.get('/mobile_client/register-confirm', async (req, res) => {
 
     console.log("📡 sessionId:", sessionId);
     console.log("📡 status:", status);
-    console.log("📡 qrSessions actuales:", Array.from(qrSessions.keys()));
 
-    const sessionData = await QRSession.findOne({ sessionId });
+    let sessionData = null;
+
+    try {
+        sessionData = await QRSession.findOne({ sessionId });
+    } catch (err) {
+        console.error("Error buscando sesión:", err);
+        return res.send(`
+        <h1>Error Interno</h1>
+        <p>No se pudo validar este QR. Intenta generar uno nuevo.</p>
+    `);
+    }
+
 
     if (!sessionData) {
         console.log("❌ No existe la sesión (Probablemente QR viejo)")
@@ -293,15 +299,15 @@ app.get('/mobile_client/register-confirm', async (req, res) => {
                     linkedAt: new Date()
                 }
             },
-            { upsert: true}
+            { upsert: true }
         );
 
-        console.log("✔ Suscripción guardada:", saved);
+        console.log("✔ Registro guardado correctamente para:", sessionData.email);
 
-        await QRSession.deleteMany({email:sessionData.email});
+        await QRSession.deleteMany({ email: sessionData.email });
 
 
-        console.log("🗑 Sesiones eliminadas para el email:", sessionData.email);
+        //console.log("🗑 Sesiones eliminadas para el email:", sessionData.email);
 
         return res.send(`
             <h1>Vinculación Exitosa</h1>
@@ -351,6 +357,37 @@ app.get('/check-password-status', async (req, res) => {
 
 // Archivos estáticos del cliente móvil
 app.use('/mobile_client', express.static(path.join(__dirname, '..', 'mobile_client')));
+
+// ---------------------------------------------
+// MANEJO GLOBAL DE ERRORES — NO EXPONER STACKTRACE
+// ---------------------------------------------
+app.use((err, req, res, next) => {
+    console.error("🔥 Error interno:", err);
+
+    // Si el request viene de la extensión → responder JSON
+    if (req.headers["content-type"] === "application/json" ||
+        req.url.includes("/generar-qr-sesion") ||
+        req.url.includes("/request-auth-login") ||
+        req.url.includes("/register-mobile")) {
+
+        return res.status(500).json({
+            error: "server_error",
+            message: "Ocurrió un error inesperado. Intenta nuevamente."
+        });
+    }
+
+    // Si viene del navegador móvil → responder HTML amigable
+    return res.status(500).send(`
+        <html>
+            <body style="font-family:sans-serif; margin:40px;">
+                <h1>Error Interno</h1>
+                <p>Ocurrió un problema procesando la solicitud.</p>
+                <p>Por favor regresa al sitio y genera un nuevo código QR.</p>
+            </body>
+        </html>
+    `);
+});
+// Iniciar el servidor
 
 app.listen(PORT, () => {
     console.log(`Servidor Node.js iniciado en http://localhost:${PORT}`);
