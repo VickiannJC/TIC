@@ -1,4 +1,6 @@
 const SERVER_BASE_URL = 'https://undeviously-largest-rashida.ngrok-free.dev'; 
+const email = data.email;
+
 
 self.addEventListener('push', (event) => {
     const data = event.data ? event.data.json() : {}; 
@@ -32,7 +34,7 @@ self.addEventListener('notificationclick', (event) => {
 
     if (event.action === 'confirm') {
         targetUrl = actionType === 'register'
-            ? `${SERVER_BASE_URL}/mobile_client/register-confirm?sessionId=${challengeId}&status=confirmed`
+            ? `${SERVER_BASE_URL}/mobile_client/register-confirm?sessionId=${challengeId}&email=${encodeURIComponent(email)}&status=confirmed`
             : `${SERVER_BASE_URL}/mobile_client/auth-confirm?sessionId=${challengeId}&status=confirmed`;
 
         if (targetUrl) {

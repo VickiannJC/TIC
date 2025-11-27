@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vinculación Exitosa</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Inter", Arial, sans-serif;
+            background: linear-gradient(160deg, #0A1931, #185ADB);
+            color: white;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 30px;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 380px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+            backdrop-filter: blur(6px);
+            animation: fadeIn 0.6s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(25px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .checkmark {
+            font-size: 60px;
+            margin-bottom: 10px;
+            animation: pop 0.5s ease;
+        }
+        @keyframes pop {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        h1 {
+            font-size: 26px;
+            margin: 0 0 12px 0;
+        }
+        p {
+            font-size: 15px;
+            opacity: 0.85;
+            margin: 0;
+            line-height: 1.4rem;
+        }
+        a.button {
+            display: block;
+            background: #00C9A7;
+            color: #012A4A;
+            padding: 15px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 20px;
+            font-size: 17px;
+            transition: 0.2s;
+        }
+        a.button:hover {
+            background: #00E8C5;
+        }
+        footer {
+            margin-top: 20px;
+            font-size: 12px;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="checkmark">✔</div>
+        <h1>Vinculación Exitosa</h1>
+        <p>Tu dispositivo ha sido vinculado correctamente.<br>Para finalizar, continúa con el registro biométrico.</p>
+        <a class="button" href="{{BIOMETRIA_URL}}">Continuar Registro</a>
+    </div>
+    <footer>Powered by PsyPassword</footer>
+</body>
+</html>

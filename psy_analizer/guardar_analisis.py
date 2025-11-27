@@ -1,9 +1,18 @@
-from flask import json
+from pymongo import MongoClient
+from datetime import datetime
+import os
 
+_MONGO_URI = os.environ.get("PSY_MONGO_URI")
+_DB = os.environ.get("PSY_ANALYZER_DB_NAME")
+_COL = os.environ.get("PSY_ANALYZER_COL_NAME")
 
-def guardar_palabras(lista_palabras, archivo_json):
-    """Guarda únicamente la lista de palabras descriptivas en un archivo JSON."""
-    with open(archivo_json, "w", encoding='utf-8') as f:
-        json.dump(lista_palabras, f, indent=4, ensure_ascii=False)
-    print(f"\nLista de palabras guardada correctamente en {archivo_json}")
+print("DB:", repr(_DB))
+print("URI:", repr(_MONGO_URI))
 
+client = MongoClient(_MONGO_URI)
+col = client[_DB][_COL]
+
+def guardar_analisis_mongo(doc):
+    doc["created_at"] = datetime.utcnow()
+    res = col.insert_one(doc)
+    return str(res.inserted_id)

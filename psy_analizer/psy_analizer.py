@@ -1,12 +1,8 @@
-import psutil
 import time
 import csv
-import datetime
 import os
 import json
 import uuid
-from threading import Thread, Event
-from typing import List, Dict, Any
 import monitorear_proceso
 import tensorflow.lite as tflite
 import numpy as np
@@ -17,8 +13,8 @@ import cryptography
 from cryptography.fernet import Fernet  
 
 # --- Constantes ---
-RESPUESTAS_JSON = "resultado_palabras_sensible.json"
-INPUT_CSV_FILE = "Simulacion_prueba_respuestas_psy.csv"
+#RESPUESTAS_JSON = "resultado_palabras_sensible.json"
+#INPUT_CSV_FILE = "Simulacion_prueba_respuestas_psy.csv"
 MODEL_PATH = 'bfi10_mode_sensiblel.tflite'
 
 class PsychologicalAnalyzer:
@@ -77,7 +73,7 @@ class PsychologicalAnalyzer:
         # Devuelve tanto la cadena de texto unida como la lista de frases
         return ", ".join(descriptions_list), descriptions_list
 
-    def analyze(self, user_answers):
+    def analyze(self, user_answers, id_usuario, session_token, metadata= None):
         # Realiza el análisis psicológico basado en las respuestas del usuario
         if len(user_answers) != 10:
             return {"error": "Se requiere un arreglo de exactamente 10 respuestas."}
@@ -103,21 +99,27 @@ class PsychologicalAnalyzer:
         # Recibe ambos valores desde la función de descripción
         final_description_str, final_description_list = self._get_advanced_description(scores_df)
 
-        usuario_id = seguridad.generar_id_usuario()[0]  # Generar ID de usuario seguro
-
-        clave_fermet = Fernet.generate_key()
-        f = Fernet(clave_fermet)
-
-        valores = seguridad.encriptar_datos(  {name: float(score) for name, score in zip(trait_names, predicted_scores)} , fernet_obj=f)
-        descripcion = seguridad.encriptar_datos( final_description_str, fernet_obj=f )
-
-        
-        return {
-            "id_usuario": usuario_id,
-            "predicted_scores": {name: float(score) for name, score in zip(trait_names, predicted_scores)},
-            "unique_profile_description": final_description_str,
-            #"descriptive_words": final_description_list # Nueva clave con la lista de palabras
+        scores = {name: float(score) for name, score in zip(trait_names, predicted_scores)}
+        psy_data = {
+            "predicted_scores": scores,
+            "unique_profile_description": final_description_str
         }
+        id_hmac = seguridad.proteger_id_usuario(id_usuario)
+        psy_hashed = seguridad.proteger_datos_psicologicos(psy_data)
+        token_hmac = seguridad.proteger_id_usuario(session_token)
+
+        doc = {
+            "user_id_hmac": id_hmac,
+            "session_token_hmac": token_hmac,
+            "psy_profile_argon2id": psy_hashed
+        }
+        if metadata:
+            doc["metadata"] = metadata
+        
+        guardar_analisis.guardar_analisis_mongo(doc)
+        
+        return { "stored ": True }
+    
 """
 def obtener_respuestas_dinamicamente():
     respuestas = []
@@ -140,7 +142,7 @@ def obtener_respuestas_dinamicamente():
     return respuestas
 """ 
 
-
+"""
 def main():
     print(f"\n{'='*60}")
     print("INICIO DEL ANÁLISIS PSICOLÓGICO MASIVO (Lectura Fila por Fila)")
@@ -243,6 +245,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+"""
 """
 #************INPUT DINÁMICO PARA CONSOLA******************
 def main():

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #300000;
+            color: #fff;
+            text-align: center;
+            padding: 40px;
+        }
+        .error-box {
+            background: rgba(255,255,255,0.1);
+            padding: 25px;
+            border-radius: 14px;
+        }
+        a.button {
+            display: inline-block;
+            margin-top: 20px;
+            background: #ff4444;
+            padding: 12px 22px;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-box">
+        <h1>Ocurrió un Error</h1>
+        <p>{{ERROR_MESSAGE}}</p>
+        <a href="/" class="button">Volver</a>
+    </div>
+</body>
+</html>

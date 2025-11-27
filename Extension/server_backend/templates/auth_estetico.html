@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autenticación</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0A1931;
+            color: #fff;
+            text-align: center;
+            padding: 40px;
+        }
+        .box {
+            background: rgba(255,255,255,0.1);
+            padding: 25px;
+            border-radius: 14px;
+        }
+        a.button {
+            display: inline-block;
+            margin-top: 20px;
+            background: #4CAF50;
+            padding: 12px 22px;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>Autenticación en Progreso</h1>
+        <p>Por favor continúa la autenticación biométrica.</p>
+        <a class="button" href="{{BIOMETRIA_AUTH_URL}}">Continuar Autenticación</a>
+    </div>
+</body>
+</html>

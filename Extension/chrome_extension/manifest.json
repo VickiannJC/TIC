@@ -1,37 +1,42 @@
 {
   "manifest_version": 3,
-  "version": "1.0",
   "name": "psy_password",
-  "description": "password manager extension based on whats in your mind",
-  "action": {
-    "default_title": "psy_password",
-    "default_icon": {
-      "16": "llave.png",
-      "48": "llave.png",
-      "128": "llave.png"
-    }
+  "version": "1.0",
+  "description": "Password manager extension",
+   "action": {
+      "default_title": "psy_password",
+      "default_popup": "popup.html",
+      "default_icon": {
+        "16": "llave.png",
+        "48": "llave.png",
+        "128": "llave.png"
+      }
   },
   "permissions": [
     "storage",
     "activeTab",
     "scripting",
-    "tabs"
+    "tabs",
+    "webNavigation"
   ],
+
   "host_permissions": [
-    "*://*.ngrok-free.dev/*",
-    "*://*.ngrok.app/*",
-    "https://*/*",
-    "http://*/*"
+    "http://*/*",
+    "https://*/*"
   ],
+
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
+
   "content_scripts": [
     {
-      "matches": ["https://*/*", "http://*/*"],
+      "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true
     }
   ]
 }
