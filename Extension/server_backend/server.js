@@ -1,3 +1,5 @@
+//version2
+
 require("dotenv").config();
 
 const express = require('express');
@@ -9,6 +11,7 @@ const mongoose = require('mongoose');
 const path = require('path');
 const jwt = require("jsonwebtoken");
 const fs = require("fs");
+// Si tu versión de Node no tiene fetch global, descomenta esta línea:
 // const fetch = require("node-fetch");
 
 // Modelos de MongoDB
@@ -16,25 +19,24 @@ const Subscripcion = require('./modelosDB/Subscripciones');
 const Temporal = require('./modelosDB/temporales');
 const QRSession = require('./modelosDB/QRSession');
 
-// Configuracion y claves VAPID
+// Configuración y claves VAPID
 const config = require('./config');
 
-
 const app = express();
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 3000;
 
+// URLs de otros módulos
 const BIOMETRIA_BASE_URL = process.env.BIOMETRIA_BASE_URL || 'https://unsignatured-isabella-hasty.ngrok-free.dev';
 const BIOMETRIA_API_KEY = process.env.BIOMETRIA_API_KEY;
 const BIOMETRIA_JWT_PUBLIC_KEY = process.env.BIOMETRIA_JWT_PUBLIC_KEY;
 
 const ANALYSIS_BASE_URL = process.env.ANALYSIS_BASE_URL;
 
+// Timeout máximo esperando callback de biometría en REGISTRO (ms) → 1 hora
+const REGISTRATION_TIMEOUT_MS = 60 * 60 * 1000;
 
-// Timeout máximo esperando callback de biometría en registro (ms)
-const BIOMETRIA_REG_TIMEOUT = 60000; // 60s
-// Mapa en memoria: email → timer
+// Mapa en memoria: email → timer de registro biométrico
 const biometricRegTimers = new Map();
-
 
 // Configuraciones VAPID
 webpush.setVapidDetails(
@@ -43,57 +45,96 @@ webpush.setVapidDetails(
     config.VAPID_PRIVATE_KEY
 );
 
-// Conexion a MongoDB
+// Conexión a MongoDB
 mongoose.connect(config.MONGODB_URI)
-    .then(() => console.log('Conectado a MongoDB'))
-    .catch(err => console.error('Error al conectar a MongoDB:', err));
+    .then(() => console.log('✅ Conectado a MongoDB'))
+    .catch(err => console.error('❌ Error al conectar a MongoDB:', err));
 
 // Middlewares
-app.use(cors());
-app.use(bodyParser.json());
+app.use(cors({
+    origin: "*",
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+}));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));
 
-//CARGAR TEMPLATES
+
+//===========================================================
+//  UTILIDADES
+//===========================================================
+
+// Cargar HTML templates (para móvil)
 function loadTemplate(name) {
     const filePath = path.join(__dirname, "templates", name);
     return fs.readFileSync(filePath, "utf8");
 }
 
-// Genera un TOKEN DE DESBLOQUEO Temporal (para login)
+// Genera un TOKEN DE DESBLOQUEO temporal (para login/registro)
 function generateToken() {
     return Math.random().toString(36).slice(-8);
 }
+
+
 
 // Enviar notificación push al usuario
 async function sendPushNotification(subscription, payload) {
     try {
         await webpush.sendNotification(subscription, JSON.stringify(payload));
-        console.log('Notificación enviada con éxito');
+        console.log('📨 Notificación enviada con éxito');
         return { success: true };
     } catch (error) {
-        console.error('Error al enviar la notificación:', error.statusCode);
+        console.error('❌ Error al enviar la notificación:', error.statusCode);
 
         if (error.statusCode === 404 || error.statusCode === 410) {
+            // Subscripción inválida → eliminar
             await Subscripcion.deleteOne({ 'subscription.endpoint': subscription.endpoint });
-            console.log('Subscripción eliminada de la base de datos debido a error 404/410');
+            console.log('🧹 Subscripción eliminada de la base de datos (404/410)');
         }
         return { success: false, error };
     }
 }
 
-// ===============================
-// ENDPOINTS REGISTRO / VINCULACIÓN
-// ===============================
-
-app.post("/generar-qr-sesion", async (req, res) => {
+// Verificar JWT de biometría
+function verifyBiometriaJwt(jwtToken) {
     try {
+        const payload = jwt.verify(jwtToken, BIOMETRIA_JWT_PUBLIC_KEY, {
+            algorithms: ["RS256", "HS256"] // según lo que use biometría
+        });
+        return { ok: true, payload };
+    } catch (err) {
+        console.error("❌ JWT biometría inválido:", err);
+        return { ok: false, error: err };
+    }
+}
+
+//===========================================================
+//  ENDPOINTS REGISTRO / VINCULACIÓN (EXTENSIÓN + MÓVIL)
+//===========================================================
+
+/**
+ * 1) La extensión pide un QR para registro.
+ *    - Se limpia cualquier sesión QR previa para ese email.
+ *    - Se crea QRSession (pending) con TTL (definido en el modelo).
+ *    - Se genera un DataURL con QR apuntando a /mobile_client/register-mobile.html?sessionId=...
+ *    - La extensión mostrará este QR y lo podrá regenerar cada 60s.
+ */
+app.post("/generar-qr-sesion", async (req, res) => {
+
+    console.log("📥 /generar-qr-sesion BODY recibido:", req.body);
+    console.log("Headers:", req.headers);
+    try {
+
+
         const { email, platform } = req.body;
 
         if (!email || !platform) {
             return res.status(400).json({ error: "Email y plataforma requeridos" });
         }
 
-        console.log(`🧹 Limpieza previa completada para: ${email}`);
-        await QRSession.deleteMany({ email }); // SOLO limpiar sesiones QR previas
+        // Limpiar sesiones QR previas de este email
+        await QRSession.deleteMany({ email });
+        console.log(`🧹 Limpieza previa de QRSession para: ${email}`);
 
         // Crear nuevo ID de sesión
         const sessionId = `SESS_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
@@ -105,16 +146,20 @@ app.post("/generar-qr-sesion", async (req, res) => {
             estado: "pending"
         });
 
-        // Construir URL base dinámica (ngrok, producción, localhost)
+        // Construir URL base dinámica (ngrok/producción/localhost)
         const proto = req.headers["x-forwarded-proto"] || req.protocol;
         const host = req.headers["x-forwarded-host"] || req.headers.host;
         const baseUrl = `${proto}://${host}`;
 
-        // URL de registro móvil
+        // URL de registro móvil (cliente web móvil)
         const registerUrl = `${baseUrl}/mobile_client/register-mobile.html?sessionId=${sessionId}`;
-
-        // Construir QR
+        console.log("URL generada para el QR:", registerUrl);
+        // Construir QR como DataURL
         const qrDataUrl = await qrcode.toDataURL(registerUrl);
+        console.log("QR generado correctamente");
+
+
+
 
         return res.json({
             qr: qrDataUrl,
@@ -122,26 +167,114 @@ app.post("/generar-qr-sesion", async (req, res) => {
         });
 
     } catch (err) {
-        console.error("❌ Error en /generar-qr-sesion:", err);
+        console.error("❌ ERROR detallado en /generar-qr-sesion:", err.stack || err, {
+            body: req.body,
+            headers: req.headers
+        });
+
         return res.status(500).json({
-            error: "Error interno",
+            error: "server_error",
             detail: err.message
         });
     }
 });
 
+/**
+ * Enviar un push de prueba después de registrar el dispositivo.
+ */
+app.post("/send-test-push", async (req, res) => {
+    const { email, continueUrl, sessionId } = req.body;
 
-// Registro de subscripción del movil (cuando escanean el QR)
+    console.log("🔥 /send-test-push BODY recibido:", req.body);
+    console.log("🔥 email en push:", email);
+    console.log("🔥 continueUrl en push:", continueUrl);
+
+
+    if (!email) {
+        return res.status(400).json({ error: "email_required" });
+    }
+
+    try {
+        const subDoc = await Subscripcion.findOne({ email });
+
+        if (!subDoc) {
+            console.log("❌ No existe subscripcion para:", email);
+            return res.status(404).json({ error: "subscription_not_found" });
+        }
+
+        console.log("📨 Enviando push de prueba a:", email);
+
+        const payload = {
+            title: "Vinculación Exitosa",
+            body: "Revisa tus notificaciones y presiona AUTENTICAR para seguir con el registro.",
+            actionType: "register_continue",
+            email,
+            sessionId,
+            continueUrl
+        };
+
+        console.log("📨 Payload enviado al móvil:", payload);
+
+
+        await webpush.sendNotification(subDoc.subscription, JSON.stringify(payload));
+
+        return res.json({ ok: true, message: "Test push sent" });
+
+    } catch (err) {
+        console.error("❌ ERROR enviando push de prueba:", err);
+        return res.status(500).json({ error: "push_error", detail: err.message });
+    }
+});
+
+
+
+/**
+ * 2) La extensión consulta el estado de una sesión QR concreta.
+ *    - Devuelve estado: "pending" | "confirmed" | "expired"
+ *    - Se usa para detener la regeneración de QR en el background.
+ */
+app.get("/qr-session-status", async (req, res) => {
+    const { sessionId } = req.query;
+
+    if (!sessionId) {
+        return res.status(400).json({ error: "sessionId_required" });
+    }
+
+    try {
+    console.log("🔍 CONSULTANDO QRSession:", sessionId);
+
+    const session = await QRSession.findOne({ sessionId })
+        .catch(err => {
+            console.error("❌ Mongo ERROR buscando QRSession:", err);
+            throw err;
+        });
+
+    console.log("🔍 RESULTADO QRSession:", session);
+    } catch (err) {
+    console.error("🔥 ERROR REAL en /qr-session-status:", err);
+    return res.status(200).json({ estado: "expired" });
+}
+
+});
+
+/**
+ * 3) El móvil (register-mobile) envía la suscripción Push una vez escaneado el QR.
+ *    Flujo:
+ *      - Verificar que QRSession existe y está pending.
+ *      - Verificar que no exista Subscripcion previa (email único).
+ *      - Guardar Subscripcion (email → subscription).
+ *      - Marcar QRSession.estado = "confirmed".
+ *      - Crear Temporal tipo REG_XXXX con token efímero.
+ *      - Programar timeout de 1h: si biometría no responde, eliminar Subscripcion/Temporal/QRSession.
+ *      - Responder con continueUrl (para que el móvil muestre botón "Continuar").
+ */
 app.post('/register-mobile', async (req, res) => {
     const { sessionId, subscription } = req.body;
 
-    console.log("📨 /register-mobile llamado");
-    console.log("📨 BODY:", req.body);
+    console.log("📨 /register-mobile: Vinculando dispositivo móvil...");
 
     try {
-
         const sessionData = await QRSession.findOne({ sessionId });
-
 
         if (!sessionData) {
             return res.status(404).json({
@@ -150,214 +283,108 @@ app.post('/register-mobile', async (req, res) => {
             });
         }
 
-        // SOLO GUARDAMOS TEMPORALMENTE la suscripción en QRSession (NO registrar aún)
-        sessionData.subscription = subscription;
-        await sessionData.save();
-        console.log("Subscripción guardada temporalmente para:", sessionData.email);
-
-
-        // -------------- VALIDACIÓN DE EMAIL DUPLICADO --------------
+        // Verificar que no exista suscripción previa para el mismo email
         const existing = await Subscripcion.findOne({ email: sessionData.email });
-
         if (existing) {
-            console.log("❌ BLOQUEADO: email YA existe:", sessionData.email);
+            console.log("❌ Registro bloqueado: email YA existe:", sessionData.email);
 
-            return res.status(409).json({
-                error: "email_exists",
-                message: "Este correo ya está registrado en otro dispositivo."
+            // 🔥 LIMPIAR sesión QR y temporales de registro
+            await QRSession.deleteMany({ email: sessionData.email });
+            await Temporal.deleteMany({ email: sessionData.email, challengeId: { $regex: /^REG_/ } });
+
+            // Si había un temporizador, cancelarlo
+            if (biometricRegTimers.has(sessionData.email)) {
+                clearTimeout(biometricRegTimers.get(sessionData.email));
+                biometricRegTimers.delete(sessionData.email);
+            }
+
+            return res.status(200).json({
+                status: "already_registered",
+                email: sessionData.email,
+                message: "Este dispositivo ya está registrado. No es necesario continuar."
             });
         }
 
-        // Enviar push para confirmar registro
-        const payload = {
-            title: 'Confirmar Registro',
-            body: 'Toca para confirmar la vinculación del dispositivo.',
-            actionType: 'register',
+
+        // Guardar suscripción móvil definitiva
+        await Subscripcion.updateOne(
+            { email: sessionData.email },
+            { subscription },
+            { upsert: true }
+        );
+
+        // Marcar la sesión QR como confirmada
+        sessionData.subscription = subscription;
+        sessionData.estado = "confirmed";
+        await sessionData.save();
+
+        // Crear entrada Temporal para REGISTRO (protege el canal con biometría)
+        const challengeId = "REG_" + Math.random().toString(36).substring(2, 9);
+        const token = generateToken();
+
+        await Temporal.create({
+            challengeId,
+            email: sessionData.email,
+            platform: sessionData.platform || "Unknown",
+            status: "pending",
+            token
+        });
+
+        // Programar TIMEOUT DE 1 HORA
+        const email = sessionData.email;
+
+        if (biometricRegTimers.has(email)) {
+            clearTimeout(biometricRegTimers.get(email));
+            biometricRegTimers.delete(email);
+        }
+
+        const timer = setTimeout(async () => {
+            try {
+                console.log(`⏰ Timeout biometría para ${email}, limpiando datos...`);
+                await Subscripcion.deleteOne({ email });
+                await Temporal.deleteMany({ email, challengeId: { $regex: /^REG_/ } });
+                await QRSession.deleteMany({ email });
+            } catch (err) {
+                console.error("❌ Error limpiando tras timeout biometría:", err);
+            } finally {
+                biometricRegTimers.delete(email);
+            }
+        }, REGISTRATION_TIMEOUT_MS);
+
+        biometricRegTimers.set(email, timer);
+
+        // Construir URL base
+        const proto = req.headers["x-forwarded-proto"] || req.protocol;
+        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        const baseUrl = `${proto}://${host}`;
+
+        // URL para el siguiente paso de registro biométrico
+        const continueUrl = `${baseUrl}/mobile_client/register-confirm?email=${encodeURIComponent(email)}&sessionId=${sessionId}`;
+
+        return res.status(200).json({
+            message: "subscription_saved",
+            continueUrl,
+            email: sessionData.email,
             sessionId,
-            email: sessionData.email
-        };
-
-        await sendPushNotification(subscription, payload);
-
-        return res.status(200).json({ message: "pending_confirmation" });
+            challengeId,
+            token
+        });
 
     } catch (err) {
-        console.error(" Error en /register-mobile:", err);
+        console.error("❌ Error en /register-mobile:", err);
         return res.status(500).json({ error: "server_error" });
     }
 });
 
-
-// ===============================
-// ENDPOINTS AUTENTICACIÓN (LOGIN)
-// ===============================
-
-app.post('/request-auth-login', async (req, res) => {
-    const { email, platform } = req.body;
-
-    const subDoc = await Subscripcion.findOne({ email: email });
-    if (!subDoc) {
-        return res.status(404).json({ error: 'No se encontró un dispositivo vinculado para este email.' });
-    }
-
-    const challengeId = 'CHLG_' + Math.random().toString(36).substring(2, 9);
-    const newChallenge = new Temporal({ email, challengeId: challengeId, platform: platform || "Unknown" });
-    await newChallenge.save();
-
-    const payload = {
-        title: 'Solicitud de Inicio de Sesión',
-        body: `Se ha solicitado acceso a ${email}. Toque "Autenticar" para continuar.`,
-        actionType: 'auth',
-        sessionId: challengeId
-    };
-
-    const pushResult = await sendPushNotification(subDoc.subscription, payload, challengeId);
-
-    if (!pushResult.success) {
-        return res.status(500).json({ error: 'Fallo al enviar notificación Push.' });
-    }
-
-    res.status(200).json({
-        message: 'Solicitud enviada al móvil.',
-        challengeId: challengeId
-    });
-});
-
-// Móvil confirma o rechaza autenticación
-app.get('/mobile_client/auth-confirm', async (req, res) => {
-    const { sessionId: challengeId, status } = req.query;
-
-    const challenge = await Temporal.findOne({ challengeId: challengeId });
-
-    if (!challenge) {
-        return res.status(404).send('Desafío de autenticación no válido o expirado.');
-    }
-
-    if (challenge.status !== 'pending') {
-        return res.send(`<h1>Acción Previa</h1><p>Este desafío ya fue procesado.</p>`);
-    }
-
-    //Usuario confirmó en el móvil
-
-    if (status === 'confirmed') {
-        const sessionToken = generateToken();
-
-        challenge.token = sessionToken;
-        challenge.status = 'confirmed';
-        await challenge.save();
-
-        // Ahora llamar a BIOMETRÍA para la autenticación
-        try {
-            const ctrl = new AbortController();
-            const timeout = setTimeout(() => ctrl.abort(), 30000); // 30s login timeout
-
-            const respBio = await fetch(`${BIOMETRIA_BASE_URL}/api/auth-login`, {
-                method: "POST",
-                signal: ctrl.signal,
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${BIOMETRIA_API_KEY}`
-                },
-                body: JSON.stringify({
-                    action: "login",
-                    authenticated: true,
-                    email: challenge.email,
-                    plataforma: challenge.platform,
-                    sessionToken
-                })
-            });
-
-            clearTimeout(timeout);
-
-            if (!respBio.ok) {
-                console.error("❌ Error HTTP biometría login:", respBio.status);
-                challenge.status = 'biometria_failed';
-                await challenge.save();
-
-                return res.send(`
-                    <h1>Autenticación incompleta</h1>
-                    <p>El módulo biométrico no aceptó la autenticación.</p>
-                `);
-            }
-
-            const dataBio = await respBio.json();
-            console.log("🔐 Biometría (login) respuesta:", dataBio);
-
-            if (!dataBio.success) {
-                challenge.status = 'biometria_failed';
-                await challenge.save();
-                return res.send('<h1>Autenticación Rechazada</h1><p>El módulo biométrico rechazó el inicio de sesión.</p>');
-            }
-
-            // Verificar JWT de biometría antes de dejar pasar al Key Manager
-            const jwtCheck = verifyBiometriaJwt(dataBio.jwt);
-            if (!jwtCheck.ok) {
-                challenge.status = 'biometria_failed';
-                await challenge.save();
-                return res.send(`
-                    <h1>Error de validación</h1>
-                    <p>La firma del módulo biométrico no es válida.</p>
-                `);
-            }
-
-            // Marcamos que todo está OK con biometría
-            challenge.status = 'biometria_ok';
-            challenge.userBiometriaId = dataBio.idUsuario;
-            challenge.biometriaJwt = dataBio.jwt;
-            await challenge.save();
-
-            return res.send(`
-                <h1>Autenticación Exitosa</h1>
-                <p>Ahora puede cerrar esta ventana. El plugin completará el inicio de sesión.</p>
-            `);
-
-        } catch (err) {
-            console.error("❌ Error llamando a biometría (login):", err);
-            challenge.status = 'biometria_failed';
-            await challenge.save();
-
-            return res.send(`
-                <h1>Error de comunicación</h1>
-                <p>No se pudo completar la autenticación con el módulo biométrico.</p>
-            `);
-        }
-
-    } else {
-        // Usuario tocó "Rechazar"
-        challenge.status = 'denied';
-        await challenge.save();
-
-        // Opcional: avisar a biometría que se denegó
-        try {
-            await fetch(`${BIOMETRIA_BASE_URL}/api/auth-login`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${BIOMETRIA_API_KEY}`
-                },
-                body: JSON.stringify({
-                    action: "login",
-                    authenticated: false,
-                    email: challenge.email,
-                    plataforma: challenge.platform
-                })
-            });
-        } catch (err) {
-            console.error("Error notificando denegación a biometría:", err);
-        }
-
-        return res.send('<h1>Autenticación Rechazada</h1><p>El inicio de sesión fue denegado por el usuario.</p>');
-    }
-});
-
-// ======================================================
-// CONFIRMACIÓN DE REGISTRO DESDE EL MÓVIL
-// ======================================================
+/**
+ * 4) Página de registro estético para el móvil.
+ *    - GET: muestra un HTML con iframe/botón hacia módulo biométrico.
+ *    - POST: se usa si quieres que biometría haga callback aquí y recargue la vista.
+ */
 app.get("/mobile_client/register-confirm", (req, res) => {
     const { email, sessionId } = req.query;
 
     if (!email || !sessionId) {
-        
         const errorTemplate = loadTemplate("error_estetico.html");
         return res.send(errorTemplate.replace("{{ERROR_MESSAGE}}", "Faltan datos necesarios."));
     }
@@ -384,27 +411,25 @@ app.post("/mobile_client/register-confirm", async (req, res) => {
             return res.send("<h1>Sesión expirada</h1><p>Escanea el QR nuevamente.</p>");
         }
 
-        // Guardar suscripción móvil
+        // Guardar/actualizar suscripción móvil (idempotente)
         await Subscripcion.updateOne(
             { email: userEmail },
             { subscription },
             { upsert: true }
         );
 
-        // URL a la que el usuario debe ser enviado
         const biometriaURL = `${BIOMETRIA_BASE_URL}/biometric/register?email=${encodeURIComponent(userEmail)}&session=${sessionId}`;
         const continueURL = `/mobile_client/register-confirm?email=${encodeURIComponent(userEmail)}&sessionId=${sessionId}`;
 
-
         let html = loadTemplate("registro_estetico.html");
+        html = html
+            .replace("{{BIOMETRIA_URL}}", biometriaURL)
+            .replace("{{CONTINUE_URL}}", continueURL);
 
-html = html
-    .replace("{{BIOMETRIA_URL}}", biometriaURL)
-    .replace("{{CONTINUE_URL}}", continueURL);
+        res.send(html);
 
-res.send(html);
-
-        // → BIOMETRIA EN SEGUNDO PLANO
+        // Ejemplo de consulta en segundo plano a biometría para verificar usuario.
+        // (Puedes adaptar o eliminar si ya tienes flujo vía /api/biometria/registro-resultado)
         setTimeout(async () => {
             try {
                 await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/check-user`, {
@@ -422,56 +447,264 @@ res.send(html);
                 session.estado = "confirmed";
                 await session.save();
             } catch (err) {
-                console.error("Error biometría:", err);
+                console.error("❌ Error biometría (check-user):", err);
             }
         }, 10);
 
     } catch (err) {
-        console.error("Error en /register-confirm:", err);
+        console.error("❌ Error en /mobile_client/register-confirm (POST):", err);
         return res.status(500).send("Error interno");
     }
 });
 
+//===========================================================
+//  ENDPOINTS AUTENTICACIÓN (LOGIN) – EXTENSIÓN + MÓVIL
+//===========================================================
 
+/**
+ * 5) La extensión pide login: se manda push al móvil.
+ */
+app.post('/request-auth-login', async (req, res) => {
+    const { email, platform } = req.body;
 
+    try {
+        const subDoc = await Subscripcion.findOne({ email });
+        if (!subDoc) {
+            return res.status(404).json({ error: 'No se encontró un dispositivo vinculado para este email.' });
+        }
 
+        const challengeId = 'CHLG_' + Math.random().toString(36).substring(2, 9);
+        const newChallenge = new Temporal({
+            email,
+            challengeId,
+            platform: platform || "Unknown"
+        });
+        await newChallenge.save();
 
-// Polling del estado del token (llamado por la extensión)
+        const payload = {
+            title: 'Solicitud de Inicio de Sesión',
+            body: `Se ha solicitado acceso a ${email}. Toque "Autenticar" para continuar.`,
+            actionType: 'auth',
+            email,
+            sessionId: challengeId,
+            continueUrl
+        };
+
+        const pushResult = await sendPushNotification(subDoc.subscription, payload);
+
+        if (!pushResult.success) {
+            return res.status(500).json({ error: 'Fallo al enviar notificación Push.' });
+        }
+
+        return res.status(200).json({
+            message: 'Solicitud enviada al móvil.',
+            challengeId
+        });
+
+    } catch (err) {
+        console.error("❌ Error en /request-auth-login:", err);
+        return res.status(500).json({ error: "server_error" });
+    }
+});
+
+/**
+ * 6) El móvil confirma o rechaza autenticación (LOGIN).
+ *    - En caso de confirmación, se llama al módulo biométrico.
+ *    - Si biometría valida y el JWT es correcto, se marca Temporal como 'biometria_ok'.
+ *    - La extensión hará polling a /check-password-status.
+ */
+app.get('/mobile_client/auth-confirm', async (req, res) => {
+    const { sessionId: challengeId, status } = req.query;
+
+    try {
+        const challenge = await Temporal.findOne({ challengeId });
+
+        if (!challenge) {
+            return res.status(404).send('Desafío de autenticación no válido o expirado.');
+        }
+
+        if (challenge.status !== 'pending') {
+            return res.send(`<h1>Acción Previa</h1><p>Este desafío ya fue procesado.</p>`);
+        }
+
+        // Usuario confirmó en el móvil
+        if (status === 'confirmed') {
+            const sessionToken = generateToken();
+
+            challenge.token = sessionToken;
+            challenge.status = 'confirmed';
+            await challenge.save();
+
+            // Llamar a módulo biométrico
+            try {
+                const ctrl = new AbortController();
+                const timeout = setTimeout(() => ctrl.abort(), 30000); // 30s login timeout
+
+                const respBio = await fetch(`${BIOMETRIA_BASE_URL}/api/auth-login`, {
+                    method: "POST",
+                    signal: ctrl.signal,
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${BIOMETRIA_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        action: "login",
+                        authenticated: true,
+                        email: challenge.email,
+                        plataforma: challenge.platform,
+                        sessionToken
+                    })
+                });
+
+                clearTimeout(timeout);
+
+                if (!respBio.ok) {
+                    console.error("❌ Error HTTP biometría login:", respBio.status);
+                    challenge.status = 'biometria_failed';
+                    await challenge.save();
+
+                    return res.send(`
+                        <h1>Autenticación incompleta</h1>
+                        <p>El módulo biométrico no aceptó la autenticación.</p>
+                    `);
+                }
+
+                const dataBio = await respBio.json();
+                console.log("🔐 Biometría (login) respuesta:", dataBio);
+
+                if (!dataBio.success) {
+                    challenge.status = 'biometria_failed';
+                    await challenge.save();
+                    return res.send('<h1>Autenticación Rechazada</h1><p>El módulo biométrico rechazó el inicio de sesión.</p>');
+                }
+
+                // Verificar JWT de biometría antes de dejar pasar
+                const jwtCheck = verifyBiometriaJwt(dataBio.jwt);
+                if (!jwtCheck.ok) {
+                    challenge.status = 'biometria_failed';
+                    await challenge.save();
+                    return res.send(`
+                        <h1>Error de validación</h1>
+                        <p>La firma del módulo biométrico no es válida.</p>
+                    `);
+                }
+
+                // Marcamos que todo está OK con biometría
+                challenge.status = 'biometria_ok';
+                challenge.userBiometriaId = dataBio.idUsuario;
+                challenge.biometriaJwt = dataBio.jwt;
+                await challenge.save();
+
+                return res.send(`
+                    <h1>Autenticación Exitosa</h1>
+                    <p>Ahora puede cerrar esta ventana. El plugin completará el inicio de sesión.</p>
+                `);
+
+            } catch (err) {
+                console.error("❌ Error llamando a biometría (login):", err);
+                challenge.status = 'biometria_failed';
+                await challenge.save();
+
+                return res.send(`
+                    <h1>Error de comunicación</h1>
+                    <p>No se pudo completar la autenticación con el módulo biométrico.</p>
+                `);
+            }
+
+        } else {
+            // Usuario tocó "Rechazar"
+            challenge.status = 'denied';
+            await challenge.save();
+
+            // Opcional: avisar a biometría que se denegó
+            try {
+                await fetch(`${BIOMETRIA_BASE_URL}/api/auth-login`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${BIOMETRIA_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        action: "login",
+                        authenticated: false,
+                        email: challenge.email,
+                        plataforma: challenge.platform
+                    })
+                });
+            } catch (err) {
+                console.error("❌ Error notificando denegación a biometría:", err);
+            }
+
+            return res.send('<h1>Autenticación Rechazada</h1><p>El inicio de sesión fue denegado por el usuario.</p>');
+        }
+
+    } catch (err) {
+        console.error("❌ Error en /mobile_client/auth-confirm:", err);
+        return res.status(500).send("Error interno");
+    }
+});
+
+/**
+ * 7) Polling del estado del token (llamado por la extensión).
+ *    - Si encuentra Temporal con status 'biometria_ok' → authenticated + token.
+ *    - Si encuentra alguno denegado/fallido → denied.
+ *    - Caso contrario, pending.
+ */
 app.get('/check-password-status', async (req, res) => {
     const { email } = req.query;
 
-    // Buscar challenge con biometría OK
-    const okChallenge = await Temporal.findOne({
-        email: email,
-        status: 'biometria_ok'
-    }).sort({ createdAt: -1 });
+    try {
+        // Buscar challenge con biometría OK
+        const okChallenge = await Temporal.findOne({
+            email,
+            status: 'biometria_ok'
+        }).sort({ createdAt: -1 });
 
-    if (okChallenge) {
-        return res.status(200).json({
-            status: 'authenticated',
-            token: okChallenge.token   // este es el que usas para el Key Manager
-        });
+        if (okChallenge) {
+            return res.status(200).json({
+                status: 'authenticated',
+                token: okChallenge.token   // token de desbloqueo que usará la extensión
+            });
+        }
+
+        // Ver si hay alguno denegado o fallido
+        const badChallenge = await Temporal.findOne({
+            email,
+            status: { $in: ['denied', 'biometria_failed'] }
+        }).sort({ createdAt: -1 });
+
+        if (badChallenge) {
+            return res.status(200).json({ status: 'denied' });
+        }
+
+        // Si no hay nada definitivo aún → pending
+        return res.status(200).json({ status: 'pending' });
+
+    } catch (err) {
+        console.error("❌ Error en /check-password-status:", err);
+        return res.status(500).json({ error: "server_error" });
     }
-
-    // Luego ver si hay alguno denegado o fallido
-    const badChallenge = await Temporal.findOne({
-        email: email,
-        status: { $in: ['denied', 'biometria_failed'] }
-    }).sort({ createdAt: -1 });
-
-    if (badChallenge) {
-        return res.status(200).json({ status: 'denied' });
-    }
-
-    // Si no hay nada definitivo aún → pending
-    return res.status(200).json({ status: 'pending' });
 });
 
+//===========================================================
+//  CALLBACK DESDE MÓDULO BIOMÉTRICO (REGISTRO)
+//===========================================================
+
+/**
+ * 8) Biometría envía el resultado del REGISTRO.
+ *    - Se valida API key (Bearer).
+ *    - Se busca Temporal con challengeId REG_*, email y token(sessionToken).
+ *    - Si success=false → se marca 'biometria_failed'.
+ *    - Si success=true:
+ *        * Se verifica el JWT.
+ *        * Se marca Temporal como 'biometria_ok'.
+ *        * Se envía info al módulo de análisis (psy_analyzer).
+ */
 app.post('/api/biometria/registro-resultado', async (req, res) => {
     const auth = req.headers.authorization || "";
-    const token = auth.replace("Bearer ", "");
+    const tokenApi = auth.replace("Bearer ", "");
 
-    if (token !== BIOMETRIA_API_KEY) {
+    if (tokenApi !== BIOMETRIA_API_KEY) {
         return res.status(401).json({ error: "unauthorized" });
     }
 
@@ -482,20 +715,20 @@ app.post('/api/biometria/registro-resultado', async (req, res) => {
         idUsuario,
         jwt: biomJwt,
         cadenaValores,
-        apiKey // si ellos te devuelven otra API key asociada a ese usuario
+        apiKey // si biometría devuelve otra API key asociada a ese usuario
     } = req.body;
 
     if (!email || !sessionToken) {
         return res.status(400).json({ error: "email_and_sessionToken_required" });
     }
 
-    // Parar temporizador
+    // Parar temporizador de timeout (si existe)
     if (biometricRegTimers.has(email)) {
         clearTimeout(biometricRegTimers.get(email));
         biometricRegTimers.delete(email);
     }
 
-    // Buscar el Temporal asociado
+    // Buscar el Temporal asociado al REGISTRO
     const temp = await Temporal.findOne({
         email,
         token: sessionToken,
@@ -521,13 +754,15 @@ app.post('/api/biometria/registro-resultado', async (req, res) => {
         return res.status(400).json({ error: "invalid_biometric_jwt" });
     }
 
+    // Registro biométrico correcto
     temp.status = 'biometria_ok';
     temp.userBiometriaId = idUsuario;
     temp.biometriaJwt = biomJwt;
     temp.cadenaValores = cadenaValores;
+    temp.apiKeyBiometria = apiKey;
     await temp.save();
 
-    // Enviar info al módulo de análisis
+    // Enviar info al módulo de análisis (psy_analyzer)
     try {
         await fetch(`${ANALYSIS_BASE_URL}/api/biometric-registration`, {
             method: "POST",
@@ -547,31 +782,16 @@ app.post('/api/biometria/registro-resultado', async (req, res) => {
     return res.json({ ok: true });
 });
 
+//===========================================================
+//  ARCHIVOS ESTÁTICOS DEL CLIENTE MÓVIL
+//===========================================================
 
-// Archivos estáticos del cliente móvil
 app.use('/mobile_client', express.static(path.join(__dirname, '..', 'mobile_client')));
 
-
 //===========================================================
-//  VERIFICAR JWT DE BIOMETRÍA
+//  MANEJO GLOBAL DE ERRORES
 //===========================================================
 
-function verifyBiometriaJwt(jwtToken) {
-    try {
-        const payload = jwt.verify(jwtToken, BIOMETRIA_JWT_PUBLIC_KEY, {
-            algorithms: ["RS256", "HS256"] // según lo que usen biometría
-        });
-        return { ok: true, payload };
-    } catch (err) {
-        console.error("JWT biometría inválido:", err);
-        return { ok: false, error: err };
-    }
-}
-
-
-// ---------------------------------------------
-// MANEJO GLOBAL DE ERRORES — NO EXPONER STACKTRACE
-// ---------------------------------------------
 app.use((err, req, res, next) => {
     console.error("🔥 Error interno:", err);
 
@@ -579,7 +799,8 @@ app.use((err, req, res, next) => {
     if (req.headers["content-type"] === "application/json" ||
         req.url.includes("/generar-qr-sesion") ||
         req.url.includes("/request-auth-login") ||
-        req.url.includes("/register-mobile")) {
+        req.url.includes("/register-mobile") ||
+        req.url.includes("/qr-session-status")) {
 
         return res.status(500).json({
             error: "server_error",
@@ -598,8 +819,11 @@ app.use((err, req, res, next) => {
         </html>
     `);
 });
-// Iniciar el servidor
+
+//===========================================================
+//  INICIAR SERVIDOR
+//===========================================================
 
 app.listen(PORT, () => {
-    console.log(`Servidor Node.js iniciado en http://localhost:${PORT}`);
+    console.log(`🚀 Servidor Node.js iniciado en http://localhost:${PORT}`);
 });
