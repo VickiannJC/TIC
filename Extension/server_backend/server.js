@@ -32,10 +32,10 @@ const BIOMETRIA_JWT_PUBLIC_KEY = process.env.BIOMETRIA_JWT_PUBLIC_KEY;
 
 const ANALYSIS_BASE_URL = process.env.ANALYSIS_BASE_URL;
 
-// Timeout máximo esperando callback de biometría en REGISTRO (ms) → 1 hora
+// Timeout máximo esperando callback de biometría en REGISTRO (ms) -> 1 hora
 const REGISTRATION_TIMEOUT_MS = 60 * 60 * 1000;
 
-// Mapa en memoria: email → timer de registro biométrico
+// Mapa en memoria: email -> timer de registro biométrico
 const biometricRegTimers = new Map();
 
 // Configuraciones VAPID
@@ -87,7 +87,7 @@ async function sendPushNotification(subscription, payload) {
         console.error('❌ Error al enviar la notificación:', error.statusCode);
 
         if (error.statusCode === 404 || error.statusCode === 410) {
-            // Subscripción inválida → eliminar
+            // Subscripción inválida ->  eliminar
             await Subscripcion.deleteOne({ 'subscription.endpoint': subscription.endpoint });
             console.log('🧹 Subscripción eliminada de la base de datos (404/410)');
         }
@@ -133,7 +133,7 @@ app.post("/generar-qr-sesion", async (req, res) => {
         }
 
         // Limpiar sesiones QR previas de este email
-        await QRSession.deleteMany({ email });
+        await QRSession.deleteMany({ email, estado: "pending" });
         console.log(`🧹 Limpieza previa de QRSession para: ${email}`);
 
         // Crear nuevo ID de sesión
@@ -178,6 +178,22 @@ app.post("/generar-qr-sesion", async (req, res) => {
         });
     }
 });
+
+app.post("/cancel-qr-session", async (req, res) => {
+    const { email } = req.body;
+    console.log("Cancelar QR")
+    if (!email) return res.status(400).json({ error: "email_required" });
+
+    try {
+        await QRSession.deleteMany({ email });
+        return res.json({ ok: true, message: "QR sessions cleaned" });
+
+    } catch (err) {
+        console.error("❌ Error al limpiar QRSession:", err);
+        return res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
 
 /**
  * Enviar un push de prueba después de registrar el dispositivo.
@@ -237,23 +253,42 @@ app.get("/qr-session-status", async (req, res) => {
     const { sessionId } = req.query;
 
     if (!sessionId) {
-        return res.status(400).json({ error: "sessionId_required" });
+        return res.status(400).json({ estado: "expired", error: "sessionId_required" });
     }
 
     try {
-    console.log("🔍 CONSULTANDO QRSession:", sessionId);
+        console.log("🔍 CONSULTANDO QRSession:", sessionId);
 
-    const session = await QRSession.findOne({ sessionId })
-        .catch(err => {
-            console.error("❌ Mongo ERROR buscando QRSession:", err);
-            throw err;
-        });
+        const session = await QRSession.findOne({ sessionId })
+            .catch(err => {
+                console.error("❌ Mongo ERROR buscando QRSession:", err);
+                throw err;
+            });
 
-    console.log("🔍 RESULTADO QRSession:", session);
+        console.log("🔍 RESULTADO QRSession:", session);
+
+        // Caso: no existe la sesión → QR expirado
+        if (!session) {
+            return res.json({ estado: "expired" });
+        }
+
+        // Caso: aún pendiente
+        if (session.estado === "pending") {
+            return res.json({ estado: "pending" });
+        }
+
+        // Caso: confirmado por el móvil
+        if (session.estado === "confirmed") {
+            return res.json({ estado: "confirmed" });
+        }
+
+        // Cualquier otro estado lo tratamos como expirado
+        return res.json({ estado: "expired" });
+
     } catch (err) {
-    console.error("🔥 ERROR REAL en /qr-session-status:", err);
-    return res.status(200).json({ estado: "expired" });
-}
+        console.error("🔥 ERROR REAL en /qr-session-status:", err);
+        return res.status(200).json({ estado: "expired", error: "exception" });
+    }
 
 });
 
@@ -265,7 +300,7 @@ app.get("/qr-session-status", async (req, res) => {
  *      - Guardar Subscripcion (email → subscription).
  *      - Marcar QRSession.estado = "confirmed".
  *      - Crear Temporal tipo REG_XXXX con token efímero.
- *      - Programar timeout de 1h: si biometría no responde, eliminar Subscripcion/Temporal/QRSession.
+ *      - Programar timeout de 1h: biometría no responde, eliminar Subscripcion/Temporal/QRSession.
  *      - Responder con continueUrl (para que el móvil muestre botón "Continuar").
  */
 app.post('/register-mobile', async (req, res) => {
@@ -389,7 +424,8 @@ app.get("/mobile_client/register-confirm", (req, res) => {
         return res.send(errorTemplate.replace("{{ERROR_MESSAGE}}", "Faltan datos necesarios."));
     }
 
-    const biometriaURL = `${BIOMETRIA_BASE_URL}/biometric/register?email=${encodeURIComponent(email)}&session=${sessionId}`;
+    const biometriaURL = `${BIOMETRIA_BASE_URL}/api/v1/biometric/authenticate-start`;
+    ;
     const html = loadTemplate("registro_estetico.html")
         .replace("{{BIOMETRIA_URL}}", biometriaURL)
         .replace("{{CONTINUE_URL}}", `/mobile_client/register-confirm?email=${encodeURIComponent(email)}&sessionId=${sessionId}`);
@@ -418,7 +454,8 @@ app.post("/mobile_client/register-confirm", async (req, res) => {
             { upsert: true }
         );
 
-        const biometriaURL = `${BIOMETRIA_BASE_URL}/biometric/register?email=${encodeURIComponent(userEmail)}&session=${sessionId}`;
+        const biometriaURL = `${BIOMETRIA_BASE_URL}/api/v1/biometric/authenticate-start`;
+
         const continueURL = `/mobile_client/register-confirm?email=${encodeURIComponent(userEmail)}&sessionId=${sessionId}`;
 
         let html = loadTemplate("registro_estetico.html");
@@ -444,6 +481,20 @@ app.post("/mobile_client/register-confirm", async (req, res) => {
                         action: "registro"
                     })
                 });
+                // 2) Iniciar registro biométrico real
+                await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/authenticate-start`, {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${BIOMETRIA_API_KEY}`,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        email: userEmail,
+                        session_token: sessionId,
+                        action: "registro",
+                    })
+                });
+                // MArcar sesión como confirmada
                 session.estado = "confirmed";
                 await session.save();
             } catch (err) {
@@ -456,6 +507,26 @@ app.post("/mobile_client/register-confirm", async (req, res) => {
         return res.status(500).send("Error interno");
     }
 });
+
+app.get("/mobile_client/start-biometric", async (req, res) => {
+    const { email, sessionId } = req.query;
+
+    await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/authenticate-start`, {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${BIOMETRIA_API_KEY}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            email,
+            session_token: sessionId,
+            action: "registro"
+        })
+    });
+
+    res.redirect(`/mobile_client/register-confirm?email=${email}&sessionId=${sessionId}`);
+});
+
 
 //===========================================================
 //  ENDPOINTS AUTENTICACIÓN (LOGIN) – EXTENSIÓN + MÓVIL
@@ -480,6 +551,9 @@ app.post('/request-auth-login', async (req, res) => {
             platform: platform || "Unknown"
         });
         await newChallenge.save();
+
+        const continueUrl = `${SERVER_BASE_URL}/mobile_client/auth-confirm?sessionId=${challengeId}&status=confirmed`;
+
 
         const payload = {
             title: 'Solicitud de Inicio de Sesión',
@@ -800,7 +874,8 @@ app.use((err, req, res, next) => {
         req.url.includes("/generar-qr-sesion") ||
         req.url.includes("/request-auth-login") ||
         req.url.includes("/register-mobile") ||
-        req.url.includes("/qr-session-status")) {
+        req.url.includes("/qr-session-status") ||
+        req.url.includes("/check-password-status")) {
 
         return res.status(500).json({
             error: "server_error",

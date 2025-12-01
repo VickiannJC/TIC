@@ -12,6 +12,16 @@
         "128": "llave.png"
       }
   },
+  
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "qr_page.html",
+        "qr_page.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "permissions": [
     "storage",
     "activeTab",

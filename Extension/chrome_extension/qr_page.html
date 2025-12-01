@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Psy-Password – Escanear QR</title>
+
+<style>
+    body {
+        background: #0a0f1a;
+        color: white;
+        font-family: Arial, sans-serif;
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+    }
+
+    .container {
+        background: rgba(255,255,255,0.06);
+        padding: 35px;
+        border-radius: 18px;
+        width: 360px;
+        text-align: center;
+        box-shadow: 0 0 40px rgba(0,0,0,0.4);
+        backdrop-filter: blur(6px);
+    }
+
+    h1 {
+        font-size: 20px;
+        margin-bottom: 10px;
+        color: #59c9ff;
+    }
+
+    .qr-box {
+        margin-top: 20px;
+        display: flex;
+        justify-content: center;
+    }
+
+    #qrImage {
+        width: 260px;
+        height: 260px;
+        border-radius: 10px;
+        background: #ffffff10;
+        padding: 10px;
+    }
+
+    #status {
+        margin-top: 20px;
+        font-size: 14px;
+        color: #aaa;
+    }
+
+    .expired {
+        color: #ff5f5f;
+    }
+
+    .success {
+        color: #62ff9a;
+    }
+
+    #loading {
+        margin-top: 15px;
+        font-size: 13px;
+        opacity: 0.7;
+    }
+</style>
+
+</head>
+<body>
+    <div class="container">
+        <h1>Escanea el Código QR</h1>
+
+        <div class="qr-box">
+            <img id="qrImage" src="" alt="QR" />
+        </div>
+
+        <div id="status">Esperando escaneo…</div>
+        <div id="loading">Actualizando automáticamente…</div>
+    </div>
+
+    <script src="qr_page.js"></script>
+</body>
+</html>

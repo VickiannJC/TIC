@@ -3,9 +3,13 @@
  * y enviarla al servidor Node.js.
  */
 // URL base de tu servidor Node.js
-const SERVER_BASE_URL = 'https://undeviously-largest-rashida.ngrok-free.dev';
+const SERVER_BASE_URL = 'https://checkout-nickel-alone-junction.trycloudflare.com';
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // --- FIX: evitar doble ejecución si el usuario abre varias veces ---
+    if (window.__psy_registering) return;
+    window.__psy_registering = true;
+
     // Elementos del DOM
     const statusEl = document.getElementById('status');
     const statusMessage = document.getElementById('statusMessage');

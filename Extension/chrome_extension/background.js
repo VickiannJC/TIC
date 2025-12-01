@@ -2,7 +2,7 @@
 // CONFIG
 // ========================================================
 
-const SERVER_BASE_URL = "https://undeviously-largest-rashida.ngrok-free.dev";
+const SERVER_BASE_URL = "https://checkout-nickel-alone-junction.trycloudflare.com";
 
 // Poll each interval to check server state (QR + login)
 const POLLING_INTERVAL = 3000;
@@ -19,12 +19,30 @@ const LOGIN_MAX_TIMEOUT = 60000; // 60s
 const sessionStore = new Map();
 
 // ========================================================
+// ESPERAR A QUE UN TAB TERMINE DE CARGAR (ULTRA SEGURO)
+// ========================================================
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status !== "complete") return;
+
+    // Buscar sesiones cuyo qrTabId coincida con este tab
+    for (const [mainTabId, session] of sessionStore.entries()) {
+        if (session.qrTabId === tabId && session.qrData) {
+            console.log("[BG] qr_page.html totalmente cargado, enviando primer QR…");
+            safeSendMessage(tabId, {
+                action: "updateQR",
+                qr: session.qrData
+            });
+        }
+    }
+});
+
+// ========================================================
 // LISTENER PRINCIPAL DE MENSAJES (popup.js + content.js)
 // ========================================================
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    const tabId = sender.tab ? sender.tab.id : request.tabId;
-    if (!tabId) {
+    const inferredTabId = sender.tab ? sender.tab.id : request.tabId;
+    if (!inferredTabId) {
         console.warn("[BG] Mensaje ignorado: Falta tabId");
         return;
     }
@@ -35,10 +53,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // REGISTRO (BOTÓN “Registrar Móvil” DEL POPUP)
     // --------------------------------------------
     if (request.action === "requestRegistration") {
-        console.log(`[BG] Registro solicitado para Tab ${tabId}`);
+        const mainTabId = request.tabId || inferredTabId;
+        console.log(`[BG] Registro solicitado para Tab ${mainTabId}`);
 
         // Inicializar estado
-        sessionStore.set(tabId, {
+        sessionStore.set(mainTabId, {
             status: "registering",
             email: request.email,
             platform: request.platform,
@@ -46,10 +65,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sessionId: null,
             qrData: null,
             qrTimerId: null,
-            pollTimerId: null
+            pollTimerId: null,
+            qrTabId: null
         });
 
-        startRegistrationFlow(tabId);
+        startRegistrationFlow(mainTabId);
         sendResponse({ received: true });
         return false;
     }
@@ -58,9 +78,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // LOGIN (BOTÓN “Psy-Auth” EN content.js)
     // --------------------------------------------
     if (request.action === "requestAuthLogin") {
-        console.log(`[BG] Login solicitado para Tab ${tabId}`);
+        const mainTabId = request.tabId || inferredTabId;
+        console.log(`[BG] Login solicitado para Tab ${mainTabId}`);
 
-        sessionStore.set(tabId, {
+        sessionStore.set(mainTabId, {
             status: "login_pending",
             email: request.email,
             platform: request.platform,
@@ -68,7 +89,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             timestamp: Date.now()
         });
 
-        initiateLogin(tabId, request.email, request.platform);
+        initiateLogin(mainTabId, request.email, request.platform);
         sendResponse({ received: true });
         return false;
     }
@@ -77,7 +98,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // CONTENT SCRIPT PREGUNTA POR ESTADO
     // --------------------------------------------
     if (request.action === "checkAuthStatus") {
-        const session = sessionStore.get(tabId);
+        const session = sessionStore.get(inferredTabId);
 
         if (session) {
             sendResponse({
@@ -89,7 +110,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
             // Limpieza cuando ya se completó login
             if (session.status === "completed") {
-                setTimeout(() => sessionStore.delete(tabId), 5000);
+                setTimeout(() => sessionStore.delete(inferredTabId), 5000);
             }
         } else {
             sendResponse({ status: "none" });
@@ -100,118 +121,173 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // ========================================================
-// 1) REGISTRO – ciclo completo
+//  REGISTRO – ciclo completo
 // ========================================================
 
-async function startRegistrationFlow(tabId) {
-    try {
-        await generateAndShowQr(tabId);
+async function startRegistrationFlow(mainTabId) {
+    const s = sessionStore.get(mainTabId);
+    if (!s) return;
 
-        // Timer para regenerar QR cada 60s
-        const qrTimerId = setInterval(() => {
-            const s = sessionStore.get(tabId);
-            if (!s || s.status !== "registering") {
-                clearInterval(pollTimerId);
-                return;
-            }
-            console.log("[BG] Polling con sessionId =", s.sessionId);
-            // Si sessionId aún no llega, esperar sin cancelar el polling
-            if (!s.sessionId) {
-                return;
-            }
-            generateAndShowQr(tabId);
+    console.log("[BG] Registro iniciado para Tab", mainTabId);
+
+    // Cerrar QR previo si existiera
+    if (s.qrTabId) {
+        try { chrome.tabs.remove(s.qrTabId); } catch (e) { }
+    }
+
+    // 1) Abrir una pestaña dedicada al QR
+    chrome.tabs.create({ url: chrome.runtime.getURL("qr_page.html") }, async (qrTab) => {
+        s.qrTabId = qrTab.id;
+        sessionStore.set(mainTabId, s);
+
+        // 2) Generar PRIMER QR
+        await generateQrAndSend(mainTabId, qrTab.id);
+
+        // Evitar múltiples timers
+        if (s.qrTimerId) {
+            clearInterval(s.qrTimerId);
+            s.qrTimerId = null;
+        }
+
+        // 3) Timer de regeneración cada 60s
+        s.qrTimerId = setInterval(() => {
+            const session = sessionStore.get(mainTabId);
+            if (!session || session.status !== "registering") return;
+
+            safeSendMessage(session.qrTabId, {
+                action: "qrExpired"
+            });
+
+            generateQrAndSend(mainTabId, session.qrTabId);
         }, QR_REFRESH_INTERVAL);
 
-        // Polling al servidor para saber si QR fue confirmado
-        const pollTimerId = setInterval(async () => {
-            const s = sessionStore.get(tabId);
-            if (!s || s.status !== "registering" || !s.sessionId) {
-                clearInterval(pollTimerId);
-                return;
-            }
+        // Cancelar poll previo si existe
+        if (s.pollTimerId) {
+            clearInterval(s.pollTimerId);
+            s.pollTimerId = null;
+        }
+
+        // 4) Polling al estado del QR
+        s.pollTimerId = setInterval(async () => {
+            const session = sessionStore.get(mainTabId);
+            console.log("[BG] Polling tab:", mainTabId, "→ sesión encontrada:", session);
+            if (!session || session.status !== "registering") return;
 
             try {
-                const resp = await fetch(`${SERVER_BASE_URL}/qr-session-status?sessionId=${encodeURIComponent(s.sessionId)}`);
+                const resp = await fetch(
+                    `${SERVER_BASE_URL}/qr-session-status?sessionId=${encodeURIComponent(session.sessionId)}`
+                );
                 const data = await resp.json();
 
                 if (data.estado === "confirmed") {
-                    console.log(`[BG] QR confirmado para ${s.email}`);
+                    console.log("[BG] ¡QR CONFIRMADO!");
 
-                    clearInterval(pollTimerId);
-                    clearInterval(s.qrTimerId);
-
-                    updateSessionState(tabId, { status: "registration_completed" });
-                }
-
-                if (data.estado === "expired") {
-                    console.log(`[BG] QR expirado para ${s.email}`);
-
-                    clearInterval(pollTimerId);
-                    clearInterval(s.qrTimerId);
-
-                    updateSessionState(tabId, {
-                        status: "error",
-                        error: "El código QR expiró. Intenta nuevamente."
+                    // notificar a la pestaña del QR
+                    safeSendMessage(session.qrTabId, {
+                        action: "qrConfirmed"
                     });
-                }
 
+                    // Detener timers
+                    clearInterval(session.qrTimerId);
+                    clearInterval(session.pollTimerId);
+
+                    // Cerrar pestaña de QR
+                    chrome.tabs.remove(session.qrTabId);
+
+                    updateSessionState(mainTabId, { status: "registration_completed" });
+                }
             } catch (err) {
-                console.error("[BG] Error consultando estado QR:", err);
+                console.error("[BG] Error consultando QR:", err);
             }
 
         }, POLLING_INTERVAL);
 
-        // Guardar timers
-        const s = sessionStore.get(tabId);
-        if (s) {
-            s.qrTimerId = qrTimerId;
-            s.pollTimerId = pollTimerId;
-            sessionStore.set(tabId, s);
+        sessionStore.set(mainTabId, s);
+    });
+}
+
+// =============================
+// FUNCION: generar QR y enviarlo
+// =============================
+
+async function generateQrAndSend(mainTabId, qrTabId) {
+    const s = sessionStore.get(mainTabId);
+    if (!s) return;
+
+    // Evitar QR duplicados si el estado ya cambió
+    if (s.status !== "registering") return;
+
+    console.log("[BG] Generando QR...");
+
+    try {
+        const resp = await fetch(`${SERVER_BASE_URL}/generar-qr-sesion`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: s.email, platform: s.platform })
+        });
+
+        const raw = await resp.text();
+        if (!resp.ok) {
+            console.error("❌ Error HTTP generando QR:", resp.status, raw);
+            return;
         }
 
+        let data;
+        try {
+            data = JSON.parse(raw);
+        } catch (err) {
+            console.error("❌ Respuesta QR no es JSON válido:", err, "RAW:", raw);
+            return;
+        }
+
+        // Guardar nuevo QR y sessionId
+        s.qrData = data.qr;
+        s.sessionId = data.sessionId;
+        sessionStore.set(mainTabId, s);
+
+        // Enviar QR a la pestaña
+        setTimeout(() => {
+            safeSendMessage(qrTabId, {
+                action: "updateQR",
+                qr: data.qr
+            });
+        }, 400);
+
     } catch (err) {
-        console.error("❌ Error en startRegistrationFlow:", err);
-        updateSessionState(tabId, { status: "error", error: err.message });
+        console.error("[BG] Error en generateQrAndSend:", err);
     }
 }
 
-async function generateAndShowQr(tabId) {
-    const s = sessionStore.get(tabId);
-    if (!s) return;
+// Envío robusto de mensajes a tabs
+function safeSendMessage(tabId, message, attempt = 0) {
+    if (attempt > 20) {
+        console.warn("[BG] Mensaje no enviado: límite de intentos alcanzado", message);
+        return;
+    }
 
-    console.log("[BG] Enviando POST /generar-qr-sesion", {
-        email: s.email,
-        platform: s.platform
-    });
+    try {
+        chrome.tabs.sendMessage(tabId, message, () => {
+            if (!chrome.runtime.lastError) return;
 
+            const error = chrome.runtime.lastError.message || "";
+            if (error.includes("Receiving end does not exist")) {
+                return setTimeout(() => {
+                    safeSendMessage(tabId, message, attempt + 1);
+                }, 150);
+            }
 
-    const resp = await fetch(`${SERVER_BASE_URL}/generar-qr-sesion`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: s.email, platform: s.platform })
-    });
-
-    console.log("[BG] Respuesta QR:", resp.status, await resp.clone().text());
-
-    if (!resp.ok) throw new Error("Error generando QR");
-
-    const data = await resp.json();
-
-
-
-
-    updateSessionState(tabId, {
-        status: "registering",
-        qrData: data.qr,
-        sessionId: data.sessionId
-    });
+            console.warn("[BG] Error inesperado en sendMessage:", error);
+        });
+    } catch (e) {
+        console.error("[BG] Excepción en safeSendMessage:", e);
+    }
 }
 
 // ========================================================
 // 2) LOGIN – ciclo completo
 // ========================================================
 
-async function initiateLogin(tabId, email, platform) {
+async function initiateLogin(mainTabId, email, platform) {
     try {
         const resp = await fetch(`${SERVER_BASE_URL}/request-auth-login`, {
             method: "POST",
@@ -224,22 +300,22 @@ async function initiateLogin(tabId, email, platform) {
             throw new Error("Error desde servidor de login: " + errMsg);
         }
 
-        startLoginPolling(tabId, email);
+        startLoginPolling(mainTabId, email);
 
     } catch (err) {
         console.error("[BG] Error inicio login:", err);
-        updateSessionState(tabId, {
+        updateSessionState(mainTabId, {
             status: "error",
             error: err.message
         });
     }
 }
 
-function startLoginPolling(tabId, email) {
+function startLoginPolling(mainTabId, email) {
     const startTime = Date.now();
 
     const interval = setInterval(async () => {
-        const s = sessionStore.get(tabId);
+        const s = sessionStore.get(mainTabId);
         if (!s || s.status !== "login_pending") {
             clearInterval(interval);
             return;
@@ -248,7 +324,7 @@ function startLoginPolling(tabId, email) {
         // Timeout global
         if (Date.now() - startTime > LOGIN_MAX_TIMEOUT) {
             clearInterval(interval);
-            updateSessionState(tabId, {
+            updateSessionState(mainTabId, {
                 status: "error",
                 error: "Tiempo de espera agotado."
             });
@@ -256,13 +332,15 @@ function startLoginPolling(tabId, email) {
         }
 
         try {
-            const resp = await fetch(`${SERVER_BASE_URL}/check-password-status?email=${encodeURIComponent(email)}`);
+            const resp = await fetch(
+                `${SERVER_BASE_URL}/check-password-status?email=${encodeURIComponent(email)}`
+            );
             const data = await resp.json();
 
             if (data.status === "authenticated") {
                 clearInterval(interval);
 
-                updateSessionState(tabId, {
+                updateSessionState(mainTabId, {
                     status: "completed",
                     keyMaterial: { password: data.token } // token = password temporal
                 });
@@ -270,7 +348,7 @@ function startLoginPolling(tabId, email) {
 
             if (data.status === "denied") {
                 clearInterval(interval);
-                updateSessionState(tabId, {
+                updateSessionState(mainTabId, {
                     status: "error",
                     error: "Acceso denegado por el usuario."
                 });
@@ -287,19 +365,59 @@ function startLoginPolling(tabId, email) {
 // UPDATE SESSION STATE (BROADCAST AL TAB)
 // ========================================================
 
-function updateSessionState(tabId, newData) {
-    const session = sessionStore.get(tabId);
+function updateSessionState(mainTabId, newData) {
+    const session = sessionStore.get(mainTabId);
     if (!session) return;
 
     const updated = { ...session, ...newData };
-    sessionStore.set(tabId, updated);
+    sessionStore.set(mainTabId, updated);
 
-    // Notificar a todos los frames del tab
-    chrome.tabs.sendMessage(tabId, {
-        action: "authStatusUpdated",
-        status: updated.status
-    }).catch(() => {
-        // Puede fallar si el tab/iframe fue cerrado
-        console.error("El tab fue cerrado");
-    });
+    try {
+        chrome.tabs.sendMessage(mainTabId, {
+            action: "authStatusUpdated",
+            status: updated.status
+        }, () => {
+            if (chrome.runtime.lastError) {
+                console.warn("[BG] No se pudo notificar al tab:", chrome.runtime.lastError.message);
+            }
+        });
+    } catch (e) {
+        console.error("El tab fue cerrado o no está disponible:", e);
+    }
 }
+
+// ========================================================
+// DETECTAR CUANDO SE CIERRA LA PESTAÑA DE QR
+// ========================================================
+chrome.tabs.onRemoved.addListener(async (closedTabId) => {
+
+    for (const [mainTabId, session] of sessionStore.entries()) {
+        if (session.qrTabId === closedTabId) {
+
+            console.log("🚫 Pestaña de QR cerrada. Cancelando flujo…", closedTabId);
+
+            // 1) Detener timers de QR y polling
+            if (session.qrTimerId) {
+                clearInterval(session.qrTimerId);
+            }
+            if (session.pollTimerId) {
+                clearInterval(session.pollTimerId);
+            }
+
+            // 2) Eliminar sesión local de la extensión
+            sessionStore.delete(mainTabId);
+
+            // 3) Limpiar sesiones del servidor
+            try {
+                await fetch(`${SERVER_BASE_URL}/cancel-qr-session`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email: session.email })
+                });
+                console.log("🧹 Sesión QR limpiada del servidor:", session.email);
+            } catch (err) {
+                console.error("❌ Error limpiando sesión del servidor:", err);
+            }
+        }
+    }
+});
