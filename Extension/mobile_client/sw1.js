@@ -1,7 +1,7 @@
-// sw_v15.js — Service Worker para el cliente móvil de Psy-Password
+// sw_v17.js — Service Worker para el cliente móvil de Psy-Password
 // Cambia el nombre del archivo o añade este comentario para forzar actualización
 
-const SERVER_BASE_URL = 'https://checkout-nickel-alone-junction.trycloudflare.com';
+const SERVER_BASE_URL = 'https://closure-kirk-pumps-indicate.trycloudflare.com';
 
 // ========================================================
 // PUSH EVENT — recibir notificación desde el servidor

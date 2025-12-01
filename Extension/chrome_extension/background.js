@@ -2,7 +2,7 @@
 // CONFIG
 // ========================================================
 
-const SERVER_BASE_URL = "https://checkout-nickel-alone-junction.trycloudflare.com";
+const SERVER_BASE_URL = "https://closure-kirk-pumps-indicate.trycloudflare.com";
 
 // Poll each interval to check server state (QR + login)
 const POLLING_INTERVAL = 3000;
@@ -152,7 +152,10 @@ async function startRegistrationFlow(mainTabId) {
         // 3) Timer de regeneración cada 60s
         s.qrTimerId = setInterval(() => {
             const session = sessionStore.get(mainTabId);
-            if (!session || session.status !== "registering") return;
+            if (!session || session.status !== "registering" || !session.qrTabId) {
+                return;
+            }
+
 
             safeSendMessage(session.qrTabId, {
                 action: "qrExpired"
@@ -171,7 +174,10 @@ async function startRegistrationFlow(mainTabId) {
         s.pollTimerId = setInterval(async () => {
             const session = sessionStore.get(mainTabId);
             console.log("[BG] Polling tab:", mainTabId, "→ sesión encontrada:", session);
-            if (!session || session.status !== "registering") return;
+            if (!session || session.status !== "registering" || !session.qrTabId) {
+                return;
+            }
+
 
             try {
                 const resp = await fetch(
@@ -188,13 +194,19 @@ async function startRegistrationFlow(mainTabId) {
                     });
 
                     // Detener timers
-                    clearInterval(session.qrTimerId);
-                    clearInterval(session.pollTimerId);
+                    if (session.qrTimerId) clearInterval(session.qrTimerId);
+                    if (session.pollTimerId) clearInterval(session.pollTimerId);
+                    session.qrTimerId = null;
+                    session.pollTimerId = null;
 
                     // Cerrar pestaña de QR
-                    chrome.tabs.remove(session.qrTabId);
+                    if (session.qrTimerId) clearInterval(session.qrTimerId);
+                    if (session.pollTimerId) clearInterval(session.pollTimerId);
+                    session.qrTabId = null;
+                    sessionStore.set(mainTabId, session);
 
                     updateSessionState(mainTabId, { status: "registration_completed" });
+
                 }
             } catch (err) {
                 console.error("[BG] Error consultando QR:", err);
@@ -221,10 +233,16 @@ async function generateQrAndSend(mainTabId, qrTabId) {
 
     try {
         const resp = await fetch(`${SERVER_BASE_URL}/generar-qr-sesion`, {
+
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email: s.email, platform: s.platform })
         });
+        console.log("🌐 [BG→SERVER] Enviando QR request al servidor:", {
+            email: s.email,
+            platform: s.platform
+        });
+
 
         const raw = await resp.text();
         if (!resp.ok) {
@@ -258,8 +276,23 @@ async function generateQrAndSend(mainTabId, qrTabId) {
     }
 }
 
+function sessionStoreHasTab(tabId) {
+    for (const session of sessionStore.values()) {
+        if (session.qrTabId === tabId) return true;
+    }
+    return false;
+}
+
 // Envío robusto de mensajes a tabs
 function safeSendMessage(tabId, message, attempt = 0) {
+
+    if (!tabId) return;
+    // SI LA TAB YA FUE CERRADA → CANCELAR
+    if (!sessionStoreHasTab(tabId)) {
+        console.warn("[BG] Tab ya no existe, se cancela envío:", message);
+        return;
+    }
+
     if (attempt > 20) {
         console.warn("[BG] Mensaje no enviado: límite de intentos alcanzado", message);
         return;
@@ -270,13 +303,15 @@ function safeSendMessage(tabId, message, attempt = 0) {
             if (!chrome.runtime.lastError) return;
 
             const error = chrome.runtime.lastError.message || "";
-            if (error.includes("Receiving end does not exist")) {
-                return setTimeout(() => {
-                    safeSendMessage(tabId, message, attempt + 1);
-                }, 150);
+            if (error.includes("Receiving end does not exist") || error.includes("The message port closed")) {
+                return;
             }
 
             console.warn("[BG] Error inesperado en sendMessage:", error);
+            // Otros errores → reintentar
+            setTimeout(() => {
+                safeSendMessage(tabId, message, attempt + 1);
+            }, 150);
         });
     } catch (e) {
         console.error("[BG] Excepción en safeSendMessage:", e);
@@ -406,6 +441,8 @@ chrome.tabs.onRemoved.addListener(async (closedTabId) => {
 
             // 2) Eliminar sesión local de la extensión
             sessionStore.delete(mainTabId);
+            session.qrTabId = null;
+
 
             // 3) Limpiar sesiones del servidor
             try {
