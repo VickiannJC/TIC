@@ -1,7 +1,7 @@
 // sw_v17.js — Service Worker para el cliente móvil de Psy-Password
 // Cambia el nombre del archivo o añade este comentario para forzar actualización
 
-const SERVER_BASE_URL = 'https://closure-kirk-pumps-indicate.trycloudflare.com';
+const SERVER_BASE_URL = 'https://paper-inspector-woods-camera.trycloudflare.com';
 
 // ========================================================
 // PUSH EVENT — recibir notificación desde el servidor

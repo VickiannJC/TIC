@@ -1,8 +1,18 @@
 Para funcionamiento
+https://hamilton-cocktail-bumper-tests.trycloudflare.com
+cambiar en:
+sw1
+mobile-register
+background
+server
 
 EXTENSION
 
-ngrok http 3000
+cd C:\cloudflare\
+.\cloudflared.exe tunnel --url http://localhost:3000 --protocol auto --no-tls-verify
+
+cd extensión
+cd server_backend
 node server.js
 
 PSY_ANALIZER

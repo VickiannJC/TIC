@@ -10,12 +10,14 @@ import pandas as pd
 import guardar_analisis
 import seguridad
 import cryptography
-from cryptography.fernet import Fernet  
+from cryptography.fernet import Fernet 
 
 # --- Constantes ---
-#RESPUESTAS_JSON = "resultado_palabras_sensible.json"
-#INPUT_CSV_FILE = "Simulacion_prueba_respuestas_psy.csv"
-MODEL_PATH = 'bfi10_mode_sensiblel.tflite'
+"""
+RESPUESTAS_JSON = "resultado_palabras_sensible_210.json"
+INPUT_CSV_FILE = "Simulacion_prueba_respuestas_psy.csv"
+"""
+MODEL_PATH = 'model_tf210_high_fidelity.tflite'
 
 class PsychologicalAnalyzer:
     def __init__(self, model_path=MODEL_PATH):
@@ -74,8 +76,64 @@ class PsychologicalAnalyzer:
         return ", ".join(descriptions_list), descriptions_list
 
     def analyze(self, user_answers, id_usuario, session_token, metadata= None):
+    #def analyze(self, user_answers):
+
+        # 1. Extraemos el email limpio del metadata que llega (si existe)
+        email_entrante = metadata.get("email") if metadata else None
+
+        #Buscar ID 
+        id_hmac = seguridad.proteger_id_usuario(id_usuario)
+        
+        print(f"[CONTROL] Verificando existencia de usuario: {id_usuario} -> {id_hmac[:10]}...")
+        # 2. CONSULTA: Buscamos si ya existe en Mongo
+        usuario_existente = guardar_analisis.buscar_usuario_por_hmac(id_hmac)
+
+        if usuario_existente:
+            print("[CONTROL] El usuario YA EXISTE. Verificando Email...")
+            
+            
+            if not email_entrante:
+                 return {"error": "Usuario existe pero no se proveyó email para verificar."}
+
+            # Revisamos la metadata guardada en Mongo
+            meta_guardada = usuario_existente.get("metadata", {})
+            
+            # Lógica para verificar si el mail ya está
+            # Caso A: Tienes una lista de 'emails'
+            lista_emails = meta_guardada.get("emails", [])
+
+
+            if email_entrante in lista_emails:
+                print(f"[CONTROL] El email {email_entrante} ya está registrado para este usuario. No se guarda nada.")
+                return { 
+                    "status": "skipped", 
+                    "reason": "already_registered", 
+                    "message": "El usuario y el correo ya están registrados." 
+                }
+            else:
+                print(f"[CONTROL] Usuario existe, pero es un NUEVO email. Agregando a metadata...")
+                # Llamamos a la función de actualización
+                guardar_analisis.agregar_email_a_metadata(id_hmac, email_entrante)
+                return { 
+                    "status": "updated", 
+                    "message": "Usuario ya existía. Se agregó el nuevo email a su registro." 
+                }
+            
+        # ==============================================================================
+        # SI NO EXISTE EL USUARIO, EL CÓDIGO SIGUE NORMALMENTE HACIA ABAJO (TensorFlow)
+        # ==============================================================================
+
         # Realiza el análisis psicológico basado en las respuestas del usuario
+        print("\n" + "="*50)
+        print("📢 [DEBUG] INICIO DEL ANÁLISIS")
+        print(f"📥 Datos recibidos de Node.js:")
+        print(f"   - ID Usuario: {id_usuario}")
+        print(f"   - Respuestas: {user_answers}")
+        print("="*50 + "\n")
+
+
         if len(user_answers) != 10:
+            print("❌ [DEBUG] Error: El array no tiene 10 respuestas.")
             return {"error": "Se requiere un arreglo de exactamente 10 respuestas."}
 
         #Preparación de datos de entrada
@@ -93,32 +151,55 @@ class PsychologicalAnalyzer:
         predicted_scores = output_data[0] 
         predicted_scores = np.clip(predicted_scores, 1.0, 5.0)
         
+        #DEBUG
+        valores_lista = predicted_scores.tolist() 
+        # Usa flush=True para obligar a Python a imprimir AHORA MISMO
+        print(f"🧠 [DEBUG] Resultados crudos: {valores_lista}", flush=True)
+        
         trait_names = ['Extraversion', 'Agreeableness', 'Conscientiousness', 'Neuroticism', 'Openness']
         scores_df = pd.DataFrame([predicted_scores], columns=trait_names)
 
         # Recibe ambos valores desde la función de descripción
         final_description_str, final_description_list = self._get_advanced_description(scores_df)
+        # Intenta imprimir codificando y decodificando para ignorar errores de consola
+        try:
+            print(f"📝 [DEBUG] Perfil generado: {final_description_str.encode('utf-8', 'replace').decode('utf-8')}", flush=True)
+        except Exception as e:
+            print(f"❌ No se pudo imprimir el perfil por error de codificación: {e}")
 
         scores = {name: float(score) for name, score in zip(trait_names, predicted_scores)}
         psy_data = {
             "predicted_scores": scores,
             "unique_profile_description": final_description_str
         }
-        id_hmac = seguridad.proteger_id_usuario(id_usuario)
+
+        
         psy_hashed = seguridad.proteger_datos_psicologicos(psy_data)
         token_hmac = seguridad.proteger_id_usuario(session_token)
+
+        nueva_metadata = {}
+        if email_entrante:
+            nueva_metadata["emails"] = [email_entrante]
 
         doc = {
             "user_id_hmac": id_hmac,
             "session_token_hmac": token_hmac,
-            "psy_profile_argon2id": psy_hashed
+            "psy_profile_argon2id": psy_hashed,
+            "metadata": nueva_metadata
         }
-        if metadata:
-            doc["metadata"] = metadata
+        
+
+            # --- DEBUG: VER LO QUE SE VA A GUARDAR EN MONGO ---
+        print("\n💾 [DEBUG] Documento listo para MongoDB:")
+        print(doc) 
+        print("="*50 + "\n")
         
         guardar_analisis.guardar_analisis_mongo(doc)
         
+        print(" [DEBUG] Proceso finalizado con éxito.")
         return { "stored ": True }
+        
+        #return psy_data
     
 """
 def obtener_respuestas_dinamicamente():
@@ -215,8 +296,8 @@ def main():
                     
                 except ValueError:
                     print(f"Error de formato en la Fila {fila_csv_idx}: Las respuestas deben ser números enteros. Fila omitida.")
-                except Exception as e:
-                    print(f"Error al analizar el usuario (Fila {fila_csv_idx}, ID {usuario_id[:8]}...): {e}")
+                #except Exception as e:
+                   # print(f"Error al analizar el usuario (Fila {fila_csv_idx}, ID {usuario_id[:8]}...): {e}")
 
             # 5. ESCRIBIR EL CORCHETE DE CIERRE ']'
             json_output.write("\n]") # Cierra el array JSON
@@ -245,8 +326,8 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 """
+
 """
 #************INPUT DINÁMICO PARA CONSOLA******************
 def main():

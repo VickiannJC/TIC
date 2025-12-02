@@ -2,10 +2,12 @@
 // CONFIG
 // ========================================================
 
-const SERVER_BASE_URL = "https://closure-kirk-pumps-indicate.trycloudflare.com";
+const SERVER_BASE_URL = 'https://paper-inspector-woods-camera.trycloudflare.com';
 
 // Poll each interval to check server state (QR + login)
 const POLLING_INTERVAL = 3000;
+
+
 
 // QR regenerates every 60 seconds
 const QR_REFRESH_INTERVAL = 60000;
@@ -363,6 +365,7 @@ function startLoginPolling(mainTabId, email) {
                 status: "error",
                 error: "Tiempo de espera agotado."
             });
+            setTimeout(() => sessionStore.delete(mainTabId), 2000);
             return;
         }
 
@@ -379,6 +382,9 @@ function startLoginPolling(mainTabId, email) {
                     status: "completed",
                     keyMaterial: { password: data.token } // token = password temporal
                 });
+                setTimeout(() => sessionStore.delete(mainTabId), 2000);
+
+                return;
             }
 
             if (data.status === "denied") {
@@ -387,11 +393,21 @@ function startLoginPolling(mainTabId, email) {
                     status: "error",
                     error: "Acceso denegado por el usuario."
                 });
+                setTimeout(() => sessionStore.delete(mainTabId), 2000);
+
+                return;
             }
 
         } catch (err) {
             console.error("Polling error:", err);
             // No detenemos el polling por fallos esporádicos
+            updateSessionState(mainTabId, {
+                status: "error",
+                error: "Error comunicando con el servidor."
+            });
+
+            // 🔥 Limpieza consistente
+            setTimeout(() => sessionStore.delete(mainTabId), 2000);
         }
     }, POLLING_INTERVAL);
 }

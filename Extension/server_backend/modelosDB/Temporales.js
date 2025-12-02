@@ -16,20 +16,32 @@ const TemporalSchema = new mongoose.Schema({
         lowercase: true,
         required: true
     },
+    // pending: recién creado
+    // confirmed: usuario aceptó en móvil
+    // denied: usuario rechazó
+    // biometria_ok: biometría validada (login o registro)
+    // biometria_failed: fallo biométrico
+    // used: token ya entregado a la extensión
     status: {
         type: String,
-        enum: ['pending', 'confirmed', 'denied'],
+        enum: ['pending', 'confirmed', 'denied', 'biometria_ok', 'biometria_failed', 'used'],
         default: 'pending'
     },
-    // Este campo almacena el TOKEN DE DESBLOQUEO de única vez
+     // - para LOGIN: es el session_token enviado a Biometría y el token que ve la extensión
+    // - para REGISTRO: es el session_token enviado a Biometría
     token: { 
         type: String,
         default: null
     },
+    // Datos que vienen de Biometría
+    userBiometriaId: { type: String, default: null },
+    biometriaJwt: { type: String, default: null },
+    cadenaValores: { type: String, default: null }, // raw_responses para registro
     createdAt: {
         type: Date,
         default: Date.now,
-        //expires: 120 // Expira automáticamente en 120 segundos (2 minutos)
+        // TTL global (por seguridad, token efímero):
+        //expires: 600 // 10 minutos (ajustable)
     }
 });
 

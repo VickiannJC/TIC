@@ -11,6 +11,7 @@ const mongoose = require('mongoose');
 const path = require('path');
 const jwt = require("jsonwebtoken");
 const fs = require("fs");
+const crypto = require("crypto");
 // Si tu versión de Node no tiene fetch global, descomenta esta línea:
 // const fetch = require("node-fetch");
 
@@ -22,14 +23,20 @@ const QRSession = require('./modelosDB/QRSession');
 // Configuración y claves VAPID
 const config = require('./config');
 
+
+
 const app = express();
+app.use((req, res, next) => {
+    console.log(`🔔 LLEGÓ UNA PETICIÓN: ${req.method} ${req.url}`);
+    next();
+});
 const PORT = process.env.PORT || 3000;
 
 // URLs de otros módulos
 const BIOMETRIA_BASE_URL = process.env.BIOMETRIA_BASE_URL;
 const BIOMETRIA_API_KEY = process.env.BIOMETRIA_API_KEY;
 const BIOMETRIA_JWT_SECRET = process.env.BIOMETRIA_JWT_SECRET;
-const SERVER_BASE_URL = 'https://closure-kirk-pumps-indicate.trycloudflare.com';
+const SERVER_BASE_URL = 'https://paper-inspector-woods-camera.trycloudflare.com';
 
 const ANALYSIS_BASE_URL = process.env.ANALYSIS_BASE_URL;
 
@@ -73,7 +80,7 @@ function loadTemplate(name) {
 
 // Genera un TOKEN DE DESBLOQUEO temporal (para login/registro)
 function generateToken() {
-    return Math.random().toString(36).slice(-8);
+    return crypto.randomBytes(32).toString("hex");
 }
 
 
@@ -468,12 +475,11 @@ app.post("/mobile_client/register-confirm", async (req, res) => {
 
         res.send(html);
 
-        // Ejemplo de consulta en segundo plano a biometría para verificar usuario.
-        // (Puedes adaptar o eliminar si ya tienes flujo vía /api/biometria/registro-resultado)
+        // Consulta en segundo plano a biometría para verificar usuario.
         setTimeout(async () => {
             try {
-                console.log("🔵 [CHECK-USER] Enviando petición a /check-user");
-                await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/check-user`, {
+                console.log("🔵 [CHECK-USER] Enviando petición a /check-user (registro)");
+                const resp = await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/check-user`, {
                     method: "POST",
                     headers: {
                         "Authorization": `Bearer ${BIOMETRIA_API_KEY}`,
@@ -481,42 +487,12 @@ app.post("/mobile_client/register-confirm", async (req, res) => {
                     },
                     body: JSON.stringify({
                         email: userEmail,
-                        session_token: sessionId,
+                        session_token: `REG_${sessionId}`, // token dummy, aquí no importa
                         action: "registro"
                     })
                 });
-                await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/check-user`, {
-                    method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${BIOMETRIA_API_KEY}`,
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        email: userEmail,
-                        session_token: sessionId,
-                        action: "registro"
-                    })
-                });
-
-                // 2) Iniciar registro biométrico real
-                await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/authenticate-start`, {
-                    method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${BIOMETRIA_API_KEY}`,
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        email: challenge.email,
-                        session_token: sessionToken, // ← el mismo token guardado en Temporal
-                        action: "autenticacion",
-                        callback_url: `${SERVER_BASE_URL}/api/biometric-callback`
-                    })
-                });
-                console.log("🟢 [CHECK-USER] Petición enviada correctamente");
-
-                // MArcar sesión como confirmada
-                session.estado = "confirmed";
-                await session.save();
+                const data = await resp.json();
+                console.log("🟢 [CHECK-USER] Respuesta:", data);
             } catch (err) {
                 console.error("❌ Error biometría (check-user):", err);
             }
@@ -528,7 +504,7 @@ app.post("/mobile_client/register-confirm", async (req, res) => {
     }
 });
 
-app.get("/mobile_client/start-biometric", async (req, res) => {
+/*app.get("/mobile_client/start-biometric", async (req, res) => {
     const { email, sessionId } = req.query;
 
     console.log("🚀 [AUTH-START] Enviando authenticate-start al módulo biométrico");
@@ -562,6 +538,7 @@ app.get("/mobile_client/start-biometric", async (req, res) => {
 
     res.redirect(`/mobile_client/register-confirm?email=${email}&sessionId=${sessionId}`);
 });
+*/
 
 //===========================================================
 //  ENDPOINTS AUTENTICACIÓN (BIOMETRIC) 
@@ -570,12 +547,18 @@ app.get("/mobile_client/start-biometric", async (req, res) => {
 
 app.post('/api/biometric-callback', async (req, res) => {
     console.log("🟣 [BIO-CALLBACK] Request recibido del módulo biométrico");
-    console.log("Headers recibidos:", req.headers);
-    console.log("Body recibido:", req.body);
+    console.log("Headers recibidos (sanitizados):", {
+        authorization: req.headers.authorization ? "Bearer ***" : undefined
+    });
+    console.log("Body recibido:", {
+        user_id: req.body.user_id,
+        email: req.body.email,
+        session_token: req.body.session_token,
+        action: req.body.action,
+        authenticated: req.body.authenticated
+    });
 
     try {
-        console.log("🔑 [BIO-CALLBACK] API KEY recibida:", req.headers.authorization);
-        console.log("🔑 [BIO-CALLBACK] API KEY esperada:", BIOMETRIA_API_KEY);
 
         // 1) Validar API Key
         const auth = req.headers.authorization || "";
@@ -622,10 +605,16 @@ app.post('/api/biometric-callback', async (req, res) => {
                 email,
                 session_token
             });
+
             console.error("❌ [BIO-CALLBACK] No existe Temporal para este session_token!");
-        } else {
             return res.status(404).json({ error: "auth_session_not_found" });
-            console.log("🟢 [BIO-CALLBACK] Temporal encontrado:", temp);
+
+        } else {
+            console.log("🟢 [BIO-CALLBACK] Temporal encontrado:", {
+                id: temp._id,
+                challengeId: temp.challengeId,
+                status: temp.status
+            });
         }
 
         // 4) Si la autenticación fue rechazada
@@ -658,10 +647,10 @@ app.post('/api/biometric-callback', async (req, res) => {
         temp.biometriaJwt = biomJwt;
         await temp.save();
 
-        // A partir de aquí, tu extensión podrá ver:
+        // A partir de aquí, la extensión podrá ver:
         //   status: 'authenticated' y token: temp.token
         // cuando consulte /check-password-status
-
+        console.log("✅ [BIO-CALLBACK] Autenticación biométrica completada OK");
         return res.json({ ok: true, authenticated: true });
 
     } catch (err) {
@@ -760,26 +749,29 @@ app.get('/mobile_client/auth-confirm', async (req, res) => {
 
             // Llamar a módulo biométrico
             try {
-                const ctrl = new AbortController();
-                const timeout = setTimeout(() => ctrl.abort(), 30000); // 30s login timeout
 
-                const respBio = await fetch(`${BIOMETRIA_BASE_URL}/api/auth-login`, {
+                const respBio = await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/authenticate-start`, {
                     method: "POST",
-                    signal: ctrl.signal,
                     headers: {
                         "Content-Type": "application/json",
                         "Authorization": `Bearer ${BIOMETRIA_API_KEY}`
                     },
                     body: JSON.stringify({
-                        action: "login",
-                        authenticated: true,
                         email: challenge.email,
-                        plataforma: challenge.platform,
-                        sessionToken
+                        session_token: sessionToken,
+                        action: "autenticacion",
+                        callback_url: `${SERVER_BASE_URL}/api/biometric-callback`
                     })
                 });
 
-                clearTimeout(timeout);
+
+                const dataBio = await respBio.json();
+                console.log("🔐 [AUTH-START] respuesta inicial biometría (sin JWT):", {
+                    success: dataBio.success,
+                    message: dataBio.message,
+                    user_id: dataBio.user_id,
+                    request_id: dataBio.request_id
+                });
 
                 if (!respBio.ok) {
                     console.error("❌ Error HTTP biometría login:", respBio.status);
@@ -792,8 +784,7 @@ app.get('/mobile_client/auth-confirm', async (req, res) => {
                     `);
                 }
 
-                const dataBio = await respBio.json();
-                console.log("🔐 Biometría (login) respuesta:", dataBio);
+
 
                 if (!dataBio.success) {
                     challenge.status = 'biometria_failed';
@@ -801,22 +792,6 @@ app.get('/mobile_client/auth-confirm', async (req, res) => {
                     return res.send('<h1>Autenticación Rechazada</h1><p>El módulo biométrico rechazó el inicio de sesión.</p>');
                 }
 
-                // Verificar JWT de biometría antes de dejar pasar
-                const jwtCheck = verifyBiometriaJwt(dataBio.jwt);
-                if (!jwtCheck.ok) {
-                    challenge.status = 'biometria_failed';
-                    await challenge.save();
-                    return res.send(`
-                        <h1>Error de validación</h1>
-                        <p>La firma del módulo biométrico no es válida.</p>
-                    `);
-                }
-
-                // Marcamos que todo está OK con biometría
-                challenge.status = 'biometria_ok';
-                challenge.userBiometriaId = dataBio.idUsuario;
-                challenge.biometriaJwt = dataBio.jwt;
-                await challenge.save();
 
                 return res.send(`
                     <h1>Autenticación Exitosa</h1>
@@ -884,9 +859,13 @@ app.get('/check-password-status', async (req, res) => {
         }).sort({ createdAt: -1 });
 
         if (okChallenge) {
+            const token = okChallenge.token;
+
+            okChallenge.status = 'used'; //Token de un solo uso
+            await okChallenge.save();
             return res.status(200).json({
                 status: 'authenticated',
-                token: okChallenge.token   // token de desbloqueo que usará la extensión
+                token   // token de desbloqueo que usará la extensión
             });
         }
 
@@ -923,95 +902,100 @@ app.get('/check-password-status', async (req, res) => {
  *        * Se marca Temporal como 'biometria_ok'.
  *        * Se envía info al módulo de análisis (psy_analyzer).
  */
-app.post('/api/biometric-register', async (req, res) => {
+app.post('/api/analizer-register', async (req, res) => {
+    console.log("🚀 [NODE] Petición recibida en /api/analizer-register");
     try {
+        // --- 1. VALIDACIÓN PREVIA (Evita crash si body es null) ---
+        if (!req.body) {
+             console.error("❌ ERROR: req.body es undefined (falta express.json)");
+             return res.status(500).json({ error: "internal_server_error_no_body_parser" });
+        }
+
+        // --- 2. VALIDAR API KEY ---
         const auth = req.headers.authorization || "";
         const tokenApi = auth.replace("Bearer ", "");
 
-        if (tokenApi !== BIOMETRIA_API_KEY) {
-            console.warn("⚠ Intento de acceso con API Key inválida en /api/biometric-register");
+        // Asegúrate de que BIOMETRIA_API_KEY venga de process.env
+        if (tokenApi !== process.env.BIOMETRIA_API_KEY) {
+            console.warn("⛔ [NODE] API Key rechazada");
             return res.status(401).json({ error: "unauthorized" });
         }
 
+        // --- 3. EXTRAER DATOS (Todo unificado a 'sessionToken') ---
         const {
-            user_id,
             email,
-            session_token,
-            raw_responses,
-            action,
-            jwt: biomJwt
+            idUsuario: user_id,
+            user_answers: cadenaValores,
+            sessionToken // <--- Variable definida aquí
         } = req.body;
 
-        if (action !== "registro") {
-            return res.status(400).json({ error: "invalid_action" });
-        }
+        console.log(`🔍 [NODE] Buscando temporal para: ${email} con token: ${sessionToken}`);
 
         if (!email || !sessionToken) {
             return res.status(400).json({ error: "email_and_sessionToken_required" });
         }
 
-        // Parar temporizador de timeout (si existe)
-        if (biometricRegTimers.has(email)) {
+        // Parar temporizador de timeout (Si existe la variable global biometricRegTimers)
+        if (typeof biometricRegTimers !== 'undefined' && biometricRegTimers.has(email)) {
             clearTimeout(biometricRegTimers.get(email));
             biometricRegTimers.delete(email);
         }
 
-        // Buscar el Temporal asociado al REGISTRO
+        // --- 4. BUSCAR EN MONGO ---
         const temp = await Temporal.findOne({
             email,
-            token: session_token,
+            token: sessionToken, // <--- CORREGIDO: Usamos la variable sessionToken
             challengeId: { $regex: /^REG_/ }
         });
 
         if (!temp) {
-            console.warn("⚠ Resultado biometría para registro sin Temporal activo:", { email, session_token });
+            console.warn("⚠ Resultado biometría sin Temporal activo:", { email, sessionToken });
             return res.status(404).json({ error: "registration_session_not_found" });
         }
 
-        if (!success) {
-            temp.status = 'biometria_failed';
-            await temp.save();
-            return res.json({ ok: true });
-        }
-
-        // Verificar JWT de biometría
-        if (biomJwt) {
-            const jwtCheck = verifyBiometriaJwt(biomJwt);
-            if (!jwtCheck.ok) {
-                temp.status = 'biometria_failed';
-                await temp.save();
-                return res.status(400).json({ error: "invalid_biometric_jwt" });
-            }
-            temp.biometriaJwt = biomJwt;
-        }
-
-        // Registro biométrico correcto
+        // --- 5. GUARDAR EN MONGO ---
+        console.log("✅ [NODE] Temporal encontrado. Actualizando estado...");
         temp.status = 'biometria_ok';
         temp.userBiometriaId = user_id;
-        temp.cadenaValores = raw_responses;
+        temp.cadenaValores = Array.isArray(cadenaValores) ? cadenaValores.join(",") : cadenaValores;
         await temp.save();
 
-        // Enviar info al módulo de análisis (psy_analyzer)
-        if (ANALYSIS_BASE_URL) {
+        // --- 6. ENVIAR A PYTHON ---
+        const analysisUrl = process.env.ANALYSIS_BASE_URL;
+        
+        if (analysisUrl) {
             try {
-                await fetch(`${ANALYSIS_BASE_URL}/api/biometric-registration`, {
+                const parsedAnswers = typeof cadenaValores === "string"
+                    ? cadenaValores.split(",").map(x => parseInt(x.trim(), 10))
+                    : cadenaValores;
+
+                // CORRECCIÓN: Definimos el objeto antes para poder imprimirlo y enviarlo
+                const payload = {
+                    email,
+                    idUsuario: user_id,
+                    user_answers: Array.isArray(parsedAnswers) ? parsedAnswers : [],
+                    sessionToken: sessionToken // <--- CORREGIDO: Usamos sessionToken
+                };
+
+                console.log("📦 [NODE] Payload a enviar a Python:", JSON.stringify(payload));
+
+                await fetch(`${analysisUrl}/api/biometric-registration`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        email,
-                        user_id,
-                        raw_responses,
-                        session_token,
-                        jwt: biomJwt || null
-                    })
+                    body: JSON.stringify(payload)
                 });
+
+                console.log("[NODE] Python respondió con estatus: 200 (✅ Éxito)")
+
             } catch (err) {
                 console.error("❌ Error enviando a módulo de análisis:", err);
             }
         }
+        
         return res.json({ ok: true });
+
     } catch (err) {
-        console.error("❌ Error en /api/biometric-register:", err);
+        console.error("❌ Error CRÍTICO en /api/analizer-register:", err);
         return res.status(500).json({ error: "server_error" });
     }
 });

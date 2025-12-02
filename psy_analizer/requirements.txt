@@ -1,10 +1,21 @@
+#---API & Backend ---
+uvicorn[standard]
 fastapi==0.99.1
 pydantic==1.10.12
-uvicorn
+
+#Machine Learning y Ciencias de datos---
+numpy==1.23.5
+tensorflow-cpu==2.10.0
+scikit-learn
+pandas
+matplotlib
+
+#--- Base de datos y seguridad ---
 pymongo
 argon2-cffi
-numpy==1.23.5
-pandas
-tensorflow-cpu==2.10.0
-python-dotenv
 cryptography==41.0.7
+
+#--- Variables de entorno---
+python-dotenv
+
+

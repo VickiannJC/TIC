@@ -1,15 +1,17 @@
 import os, hmac, hashlib, json
 from argon2.low_level import hash_secret, Type
 
+
+
+_HMAC_KEY = os.environ.get("PSY_HMAC_SECRET").encode()
+_ARGON_SALT = os.environ.get("PSY_ARGON_SALT").encode()
+
 if not _HMAC_KEY:
     raise RuntimeError("Falta la variable de entorno PSY_HMAC_SECRET")
 
 if not _ARGON_SALT:
     raise RuntimeError("Falta la variable de entorno PSY_ARGON_SALT")
 
-
-_HMAC_KEY = os.environ.get("PSY_HMAC_SECRET").encode()
-_ARGON_SALT = os.environ.get("PSY_ARGON_SALT").encode()
 
 def proteger_id_usuario(id_usuario: str) -> str:
     return hmac.new(_HMAC_KEY, id_usuario.encode(), hashlib.sha256).hexdigest()
