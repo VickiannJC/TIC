@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Registro completado</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Inter", Arial, sans-serif;
+            background: linear-gradient(160deg, #0A1931, #185ADB);
+            color: white;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            justify-content: center;
+            align-items: center;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 30px;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 380px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+            backdrop-filter: blur(6px);
+        }
+        h1 {
+            font-size: 26px;
+            margin-bottom: 12px;
+        }
+        p {
+            font-size: 15px;
+            opacity: 0.9;
+            margin: 0 0 10px;
+        }
+        .email {
+            font-weight: 600;
+        }
+        a.button {
+            display: block;
+            margin-top: 20px;
+            background: #00C9A7;
+            color: #012A4A;
+            padding: 12px 18px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        a.button:hover {
+            background: #00E8C5;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>¡Registro completado!</h1>
+        <p>El registro de tu cuenta <span class="email">{{EMAIL}}</span> ha finalizado correctamente.</p>
+        <p>Ahora puedes empezar a generar y usar tus contraseñas con Psy-Password.</p>
+        <a class="button" href="/">Ir al inicio / extensión</a>
+    </div>
+</body>
+<script>
+const email = "{{EMAIL}}";
+
+async function checkEstadoRegistro() {
+    try {
+        const resp = await fetch(`/api/registro-estado?email=${encodeURIComponent(email)}`);
+        const data = await resp.json();
+
+        if (data.estado === "completado") {
+            // Redirigir a la página final
+            window.location.href = `/mobile_client/registro-completado?email=${encodeURIComponent(email)}`;
+        }
+    } catch (e) {
+        console.log("Error consultando estado registro:", e);
+    }
+}
+
+// Revisar cada 2 segundos
+setInterval(checkEstadoRegistro, 2000);
+</script>
+
+</html>

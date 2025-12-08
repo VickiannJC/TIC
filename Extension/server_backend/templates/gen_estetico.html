@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Generación de Contraseña</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #0A1931;
+        color: #fff;
+        text-align: center;
+        padding: 40px;
+    }
+    .box {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 25px;
+        border-radius: 14px;
+    }
+    button {
+        margin-top: 20px;
+        background: #1E90FF;
+        padding: 12px 22px;
+        color: #fff;
+        text-decoration: none;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+    }
+</style>
+</head>
+<body>
+    <div class="box">
+        <h1>Generación de Contraseña</h1>
+        <p>Confirma para iniciar la verificación biométrica.</p>
+
+        <form method="POST" action="/mobile_client/gen-continue">
+            <input type="hidden" name="challengeId" value="{{CHALLENGE_ID}}">
+            <button type="submit">Continuar</button>
+        </form>
+    </div>
+</body>
+</html>

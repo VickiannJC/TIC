@@ -29,7 +29,7 @@ const TemporalSchema = new mongoose.Schema({
     },
      // - para LOGIN: es el session_token enviado a Biometría y el token que ve la extensión
     // - para REGISTRO: es el session_token enviado a Biometría
-    token: { 
+    session_token: { 
         type: String,
         default: null
     },

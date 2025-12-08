@@ -1,14 +1,45 @@
-// sw_v17.js — Service Worker para el cliente móvil de Psy-Password
+// sw_v34.js — Service Worker para el cliente móvil de Psy-Password
 // Cambia el nombre del archivo o añade este comentario para forzar actualización
 
-const SERVER_BASE_URL = 'https://paper-inspector-woods-camera.trycloudflare.com';
+console.log("[SW] Service Worker CARGADO y EJECUTADO.");
+
+
+const SERVER_BASE_URL = 'https://cliff-dsl-bedding-question.trycloudflare.com';
+
+self.addEventListener("install", (event) => {
+    console.log("[SW] INSTALL ejecutado");
+    self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+    console.log("[SW] ACTIVATE ejecutado");
+    self.clients.claim();
+});
+
+
+
+// Mandatory fetch handler so clients.openWindow() can work in notificationclick
+self.addEventListener('fetch', (event) => {
+
+});
 
 // ========================================================
 // PUSH EVENT — recibir notificación desde el servidor
 // ========================================================
 self.addEventListener('push', (event) => {
+
+    console.log("🔥🔥🔥 [SW] PUSH EVENT DISPARADO");
+    console.log("🔹 event.data =", event.data);
+
+    let raw;
+    try {
+        raw = event.data ? event.data.text() : "NO_DATA";
+        console.log("📩 PUSH RAW TEXT:", raw);
+    } catch(e) {
+        console.log("❌ ERROR leyendo event.data:", e);
+    }
+
     let data = {};
-    console.log("[SW] Push recibido RAW:", event.data ? event.data.text() : "SIN DATA");
 
 
     try {
@@ -20,12 +51,17 @@ self.addEventListener('push', (event) => {
         console.error('[SW] Error parseando datos del push:', e);
     }
 
+    console.log("[SW] DATA FINAL PARA LA NOTIFICACIÓN:", data);
+
+
     const title = data.title || 'Psy-Password';
     const body = data.body || 'Se requiere tu acción para continuar.';
     const actionType = data.actionType || 'auth';  // 'auth' | 'register' | 'register_continue' | etc.
     const sessionId = data.sessionId || null;
     const email = data.email || null;
     const continueUrl = data.continueUrl || null;
+    const session_token = data.session_token || null;
+    const challengeId = data.challengeId || null;
 
     console.log('[SW] Push recibido:', { actionType, sessionId, email, continueUrl });
 
@@ -35,9 +71,11 @@ self.addEventListener('push', (event) => {
         vibrate: [100, 50, 100],
         data: {
             actionType,
+            continueUrl,
             sessionId,
             email,
-            continueUrl
+            session_token,
+            challengeId
         },
         actions: [
             {
@@ -61,6 +99,7 @@ self.addEventListener('push', (event) => {
                         : 'Cancelar',
                 icon: 'cancel.png'
             }
+            
         ]
     };
 
@@ -71,15 +110,20 @@ self.addEventListener('push', (event) => {
 // NOTIFICATION CLICK — usuario pulsa en la notificación
 // ========================================================
 self.addEventListener('notificationclick', (event) => {
+    console.log("🖱 [SW] CLICK en notificación");
+    console.log("   ➤ event.action:", event.action);
+    console.log("🔹 event.notification.data =", event.notification.data);
     event.notification.close();
 
-    const { actionType, sessionId, email, continueUrl } = event.notification.data || {};
+    const { actionType, email, continueUrl, session_token } = event.notification.data || {};
+    const sessionId = event.notification.data?.sessionId;
+
 
     console.log("[SW] CLICK DATA:", {
         actionType,
-        sessionId,
         email,
         continueUrl,
+        session_token,
         action: event.action
     });
 
@@ -103,20 +147,44 @@ self.addEventListener('notificationclick', (event) => {
     // event.action === '' → lo tratamos como "confirm".
     const isConfirm =
         event.action === 'confirm' || event.action === '' || event.action === undefined;
+    
+        console.log("[SW] isConfirm:", isConfirm);
 
-    // ------------------------------
+   
     // CASOS POR TIPO DE ACCIÓN
-   if (actionType === 'auth') {
-    if (isConfirm) {
-        // Abrir flujo correcto del registro estético
-        const url = `${SERVER_BASE_URL}/mobile_client/register-confirm?email=${encodeURIComponent(email)}&sessionId=${encodeURIComponent(sessionId)}`;
-        console.log("[SW] Abriendo register-confirm desde push:", url);
-        open(url);
-    } else if (event.action === 'deny') {
-        console.log("[SW] Usuario rechazó AUTENTICAR.");
+    if (actionType === 'auth') {
+        console.log('[SW] Click en notificación de LOGIN:', {
+            isConfirm,
+            actionType,
+            sessionId,
+            email,
+            continueUrl
+        });
+
+        if (isConfirm) {
+            // 🔹 Priorizar la URL que mandó el servidor
+            if (continueUrl) {
+                console.log('[SW] Abriendo continueUrl (login):', continueUrl);
+                open(continueUrl);
+            } else {
+                // Fallback por si alguna vez no viene continueUrl
+                const fallbackUrl = `${SERVER_BASE_URL}/mobile_client/auth-confirm?token=${encodeURIComponent(
+                    session_token || ''
+                )}&status=confirmed`;
+                console.log('[SW] continueUrl ausente, usando fallback auth-confirm:', fallbackUrl);
+                open(fallbackUrl);
+            }
+        } else if (event.action === 'deny') {
+            console.log('[SW] Usuario rechazó AUTENTICAR desde la notificación.', {
+                sessionId,
+                email
+            });
+            // Aquí podrías opcionalmente hacer un fetch a un endpoint para marcar "denied"
+        }
+
+        return;
     }
-    return;
-}
+
 
 
     if (actionType === 'register') {
@@ -135,12 +203,14 @@ self.addEventListener('notificationclick', (event) => {
     if (actionType === 'register_continue') {
         // PUSH DE PRUEBA DESPUÉS DE VINCULACIÓN
         if (isConfirm) {
+            console.log('[SW] Abriendo continueUrl (login):', continueUrl);
             open(continueUrl);
         } else if (event.action === 'deny') {
             console.log('[SW] Usuario canceló continuar con registro biométrico.');
         }
         return;
     }
+
 
     // Fallback genérico: si no sabemos el tipo, pero hay continueUrl,
     // lo tratamos como "confirmar".

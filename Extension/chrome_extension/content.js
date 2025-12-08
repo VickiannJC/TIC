@@ -5,6 +5,19 @@
 // Estado interno local del content script
 let myPasswordField = null;
 
+function pingBackground() {
+    chrome.runtime.sendMessage({ action: "ping" }, () => {});
+}
+
+setInterval(() => {
+    try {
+        pingBackground();
+    } catch (e) {
+        console.warn("[CS] Reconectando a background…");
+    }
+}, 3000);
+
+
 // ========================================================
 // 1) DETECCIÓN DE CAMPOS DEL SITIO
 // ========================================================
@@ -48,12 +61,27 @@ function getPlatformName() {
 // ========================================================
 
 function checkBuzon() {
+    const emailField = findEmailField();
+    const email = emailField ? emailField.value : null;
+
+    if (!email) {
+        return;
+    }
     try {
-        chrome.runtime.sendMessage({ action: "checkAuthStatus" }, (response) => {
+        chrome.runtime.sendMessage({ action: "checkAuthStatus", email }, (response) => {
             if (chrome.runtime.lastError) {
                 return; // Tab cerrándose o contexto inválido
             }
-            if (!response) return;
+            if (!response){
+                console.warn("[CS] checkAuthStatus sin respuesta (extensión recargada o pestaña sin background).");
+                return;
+            }
+        console.log("[CS] Estado de autenticación para", email, "=>", response.status);
+
+        if (response.status === "authenticated") {
+                showNotificationBanner(" Autenticación completada, iniciando sesión...");
+            
+            }
 
             handleServerResponse(response);
         });
@@ -120,6 +148,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         console.log("[CS] Notificación recibida — revisando buzón...");
         checkBuzon();
     }
+    if (msg.action === "authPushSent") {
+    console.log("[CS] Push enviado correctamente al móvil");
+    showNotificationBanner("✔ Notificación enviada a tu dispositivo móvil");
+}
+if (msg.action === "authPushFailed") {
+    console.error("[CS] Error enviando push:", msg.error);
+    showNotificationBanner("❌ No se pudo enviar la notificación a tu móvil");
+}
+
 
     // popup.js pide email
     if (msg.action === "getEmailField") {
@@ -150,39 +187,183 @@ function injectButton(target) {
     btn.type = "button";
     btn.innerText = "🗝️ Psy-Auth";
     btn.style.cssText = `
-        margin-left:5px;
-        background:#007bff;
-        color:white;
-        border:none;
-        padding:5px 8px;
-        border-radius:4px;
-        cursor:pointer;
-        z-index:100000;
-        position:relative;
-        font-size:14px;
+    margin-left: 8px;
+    padding: 7px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: white;
+
+    background: linear-gradient(
+        135deg,
+        rgba(0, 64, 255, 0.75),    /* Azul intenso profundo */
+        rgba(0, 123, 255, 0.80),   /* Azul eléctrico */
+        rgba(75, 27, 255, 0.70)    /* Azul-morado vibrante */
+    );
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 14px;
+    cursor: pointer;
+
+    box-shadow:
+        inset 0 0 4px rgba(255,255,255,0.4),
+        0 4px 10px rgba(0,0,0,0.15);
+
+    transition: all 0.25s ease;
+    position: relative;
+    z-index: 100001;
+`;
+
+btn.onmouseenter = () => {
+    btn.style.transform = "translateY(-2px)";
+    btn.style.filter = "brightness(1.15)";
+};
+
+btn.onmouseleave = () => {
+    btn.style.transform = "translateY(0px)";
+    btn.style.filter = "brightness(1)";
+};
+
+
+    // Contenedor para el menú emergente
+    const menu = document.createElement("div");
+    menu.style.cssText = `
+    position:absolute;
+    bottom:35px;
+    right:0;
+    padding:10px 12px;
+    min-width:150px;
+    max-width:170px;
+    background: linear-gradient(135deg, rgba(255, 170, 220, 0.35), rgba(140, 90, 255, 0.35));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 18px;
+    box-shadow: 0 6px 116px rgba(0,0,0,0.25);
+    border: 1px solid rgba(255,255,255,0.25);
+    display:none;
+    opacity:0;
+    transform: translateY(10px) scale(0.95);
+    transition: all 0.25s ease;
+    z-index:100002;
     `;
 
-    target.parentNode.insertBefore(btn, target.nextSibling);
-
-    btn.onclick = (e) => {
-        e.preventDefault();
-
-        const emailField = findEmailField();
-        const email = emailField ? emailField.value : prompt("Confirma tu correo:");
-
-        if (!email) return;
-
-        btn.innerText = "⏳ ...";
-        btn.disabled = true;
-
-        chrome.runtime.sendMessage({
-            action: "requestAuthLogin",
-            email,
-            platform: getPlatformName()
-        });
+    // Función para crear botones tipo “píldora”
+function createGlassButton(label, emoji, bgColor) {
+    const btn = document.createElement("button");
+    btn.innerHTML = `${emoji} ${label}`;
+    btn.style.cssText = `
+        width:160px;
+        padding:8px 10px;
+        margin-bottom:8px;
+        background:${bgColor};
+        color:white;
+        border:none;
+        border-radius:14px;
+        font-size:13px;
+        font-weight:500;
+        text-align:left;
+        cursor:pointer;
+        box-shadow: inset 0 0 4px rgba(255,255,255,0.4),
+                    0 4px 10px rgba(0,0,0,0.15);
+        transition: all 0.2s ease;
+    `;
+    btn.onmouseenter = () => {
+        btn.style.transform = "translateX(4px)";
+        btn.style.filter = "brightness(1.12)";
     };
+    btn.onmouseleave = () => {
+        btn.style.transform = "translateX(0)";
+        btn.style.filter = "brightness(1)";
+    };
+    return btn;
 }
 
+// --- Botón 1: INICIAR SESIÓN ---
+const btnLogin = createGlassButton("Iniciar sesión", "🔐", "rgba(90,120,255,0.85)");
+
+btnLogin.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    const emailField = findEmailField();
+    const email = emailField ? emailField.value : prompt("Confirma tu correo:");
+    if (!email) return;
+
+    btn.innerText = "⏳ ...";
+    btn.disabled = true;
+
+    chrome.runtime.sendMessage({
+        action: "requestAuthLogin",
+        email,
+        platform: getPlatformName()
+    });
+
+    closeMenu();
+};
+
+// --- Botón Generar Contraseña ---
+const btnGenPass = createGlassButton("Generar contraseña", "✨", "rgba(80,200,120,0.85)");
+
+btnGenPass.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    const emailField = findEmailField();
+    const email = emailField ? emailField.value : prompt("Confirma tu correo:");
+    if (!email) return;
+
+    btn.innerText = "⏳ ...";
+    btn.disabled = true;
+
+    chrome.runtime.sendMessage({
+        action: "requestPasswordGeneration",
+        email,
+        platform: getPlatformName()
+    });
+
+    closeMenu();
+};
+
+// Agregar botones al menú
+menu.appendChild(btnLogin);
+menu.appendChild(btnGenPass);
+
+
+ 
+
+
+ // --- Animación suave ---
+function openMenu() {
+    menu.style.display = "block";
+    setTimeout(() => {
+        menu.style.opacity = "1";
+        menu.style.transform = "translateY(0) scale(1)";
+    }, 10);
+}
+    function closeMenu() {
+    menu.style.opacity = "0";
+    menu.style.transform = "translateY(-10px) scale(0.96)";
+    setTimeout(() => menu.style.display = "none", 200);
+}
+
+
+ // Toggle del menú
+btn.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    if (menu.style.display === "none") openMenu();
+    else closeMenu();
+};
+    // Insertar botón y menú en el DOM
+    const wrapper = document.createElement("div");
+    wrapper.style.position = "relative";
+    wrapper.appendChild(btn);
+    wrapper.appendChild(menu);
+
+    target.parentNode.insertBefore(wrapper, target.nextSibling);
+}
 function resetButtons() {
     const btns = document.querySelectorAll("button");
     btns.forEach((b) => {
@@ -274,4 +455,32 @@ function removeQRModal() {
         qrCountdownTimer = null;
     }
 }
+
+function showNotificationBanner(text) {
+    const banner = document.createElement("div");
+    banner.innerText = text;
+
+    banner.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #0066ff;
+        color: white;
+        padding: 12px 18px;
+        border-radius: 10px;
+        font-size: 14px;
+        z-index: 99999999;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+        animation: fadeIn 0.2s ease;
+    `;
+
+    document.body.appendChild(banner);
+
+    setTimeout(() => {
+        banner.style.transition = "opacity 0.5s ease";
+        banner.style.opacity = "0";
+        setTimeout(() => banner.remove(), 500);
+    }, 3000);
+}
+
 

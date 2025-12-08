@@ -2,7 +2,8 @@
 // CONFIG
 // ========================================================
 
-const SERVER_BASE_URL = 'https://paper-inspector-woods-camera.trycloudflare.com';
+const SERVER_BASE_URL = 'https://cliff-dsl-bedding-question.trycloudflare.com';
+const EXT_CLIENT_KEY = "9afe2270278c6647dc54094103a7e7605d61f9b4c0642baf59559453d41c4c94";
 
 // Poll each interval to check server state (QR + login)
 const POLLING_INTERVAL = 3000;
@@ -13,18 +14,47 @@ const POLLING_INTERVAL = 3000;
 const QR_REFRESH_INTERVAL = 60000;
 
 // Login timeouts
-const LOGIN_MAX_TIMEOUT = 60000; // 60s
+const LOGIN_MAX_TIMEOUT = 350000;
 
 // ========================================================
-// MEMORIA DEL TAB (Buzón por TabID)
+// MEMORIA DEL TAB (Buzón por email)
 // ========================================================
 const sessionStore = new Map();
+
+const loginPollingIntervals = new Map();
+
+
+// Map<string(email), {
+//   status: "none" | "login_pending" | "authenticated" | "denied" | "error",
+//   email: string,
+//   platform: string,
+//   tabId: number,
+//   startTime: number,
+//   error?: string
+// }>
 
 // ========================================================
 // ESPERAR A QUE UN TAB TERMINE DE CARGAR (ULTRA SEGURO)
 // ========================================================
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.status !== "complete") return;
+
+    //  RESET AUTOMÁTICO DE SESIONES HUÉRFANAS
+    const session = sessionStore.get(tabId);
+
+    if (session && session.status === "login_pending") {
+        console.warn("[BG] Se detectó login_pending huérfano tras refresh. Limpiando sesión…");
+        sessionStore.delete(tabId);
+
+        // notificar al content.js para limpiar UI
+        chrome.tabs.sendMessage(tabId, {
+            action: "authStatusUpdated",
+            status: "none"
+        }, () => {
+            /* ignorar error si no existe content.js en esta página */
+        });
+    }
+
 
     // Buscar sesiones cuyo qrTabId coincida con este tab
     for (const [mainTabId, session] of sessionStore.entries()) {
@@ -77,21 +107,46 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     // --------------------------------------------
-    // LOGIN (BOTÓN “Psy-Auth” EN content.js)
+    // LOGIN (BOTÓN “Psy-Auth” )
     // --------------------------------------------
     if (request.action === "requestAuthLogin") {
+        const email = request.email;
+        const platform = request.platform;
+        const tabId = inferredTabId;
+        console.log("[BG] Login solicitado para email", email, "desde Tab", tabId);
+        if (!email) {
+            console.warn("[BG] requestAuthLogin sin email, abortando.");
+            return;
+        }
+
+        sessionStore.set(tabId, {
+            status: "login_pending",
+            email,
+            platform,
+            tabId,
+            timestamp: Date.now()
+        });
+
+        initiateLogin(email, platform,tabId);
+        sendResponse({ received: true });
+        return false;
+    }
+
+    // --------------------------------------------
+    // GENERAR CONTRASEÑA (BOTÓN “Psy-Auth” )
+    // --------------------------------------------
+    if (request.action === "requestPasswordGeneration") {
         const mainTabId = request.tabId || inferredTabId;
-        console.log(`[BG] Login solicitado para Tab ${mainTabId}`);
 
         sessionStore.set(mainTabId, {
-            status: "login_pending",
+            status: "generation_pending",
             email: request.email,
             platform: request.platform,
             origin,
             timestamp: Date.now()
         });
 
-        initiateLogin(mainTabId, request.email, request.platform);
+        initiateGeneration(mainTabId, request.email, request.platform);
         sendResponse({ received: true });
         return false;
     }
@@ -100,23 +155,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // CONTENT SCRIPT PREGUNTA POR ESTADO
     // --------------------------------------------
     if (request.action === "checkAuthStatus") {
-        const session = sessionStore.get(inferredTabId);
+        const tabId = inferredTabId; 
 
-        if (session) {
-            sendResponse({
-                status: session.status,
-                qrData: session.qrData,
-                keyMaterial: session.keyMaterial,
-                error: session.error
-            });
-
-            // Limpieza cuando ya se completó login
-            if (session.status === "completed") {
-                setTimeout(() => sessionStore.delete(inferredTabId), 5000);
-            }
-        } else {
+        if (!tabId) {
+            console.warn("[BG] checkAuthStatus sin tabId");
             sendResponse({ status: "none" });
+            return;
         }
+
+        const session = sessionStore.get(tabId);
+        sendResponse(session || { status: "none" });
 
         return true;
     }
@@ -237,7 +285,10 @@ async function generateQrAndSend(mainTabId, qrTabId) {
         const resp = await fetch(`${SERVER_BASE_URL}/generar-qr-sesion`, {
 
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                "X-Client-Key": EXT_CLIENT_KEY
+            },
             body: JSON.stringify({ email: s.email, platform: s.platform })
         });
         console.log("🌐 [BG→SERVER] Enviando QR request al servidor:", {
@@ -280,6 +331,7 @@ async function generateQrAndSend(mainTabId, qrTabId) {
 
 function sessionStoreHasTab(tabId) {
     for (const session of sessionStore.values()) {
+        if (session.tabId === tabId) return true;
         if (session.qrTabId === tabId) return true;
     }
     return false;
@@ -324,65 +376,209 @@ function safeSendMessage(tabId, message, attempt = 0) {
 // 2) LOGIN – ciclo completo
 // ========================================================
 
-async function initiateLogin(mainTabId, email, platform) {
+async function fetchWithRetry(url, options, retries = 3) {
+    for (let i = 0; i < retries; i++) {
+        try { return await fetch(url, options); }
+        catch (err) {
+            if (i === retries - 1) throw err;
+            await new Promise(r => setTimeout(r, 700));
+        }
+    }
+}
+
+
+async function initiateLogin(email, platform, tabId) {
     try {
-        const resp = await fetch(`${SERVER_BASE_URL}/request-auth-login`, {
+        const resp = await fetchWithRetry(`${SERVER_BASE_URL}/request-auth-login`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-Client-Key": EXT_CLIENT_KEY
+            },
+            body: JSON.stringify({ email, platform })
+        });
+
+        const data = await resp.json();
+
+
+        if (!resp.ok) {
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                chrome.tabs.sendMessage(tabs[0].id, {
+                    action: "authPushFailed",
+                    error: data.error || "Error enviando push"
+                });
+            });
+            return;
+        }
+
+        // Notificación enviada correctamente
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            chrome.tabs.sendMessage(tabs[0].id, {
+                action: "authPushSent"
+            });
+        });
+
+        startLoginPolling(email, tabId);
+
+    } catch (err) {
+        console.error("[BG] Error inicio login:", err);
+        const s = sessionStore.get(tabId);
+        if (s?.tabId) {
+            updateSessionState(s.tabId, { status: "error", error: err.message });
+        }
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            chrome.tabs.sendMessage(tabs[0].id, {
+                action: "authPushFailed",
+                error: err.message
+            });
+        });
+    }
+}
+
+async function initiateGeneration(mainTabId, email, platform) {
+    try {
+        const resp = await fetch(`${SERVER_BASE_URL}/request-password-generation`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email, platform })
         });
 
         if (!resp.ok) {
-            const errMsg = await resp.text();
-            throw new Error("Error desde servidor de login: " + errMsg);
+            console.error("[BG] Error generación de contraseña:", err);
+            updateSessionState(mainTabId, { status: "error", error: "Error iniciando generación." });
+            return;
         }
 
-        startLoginPolling(mainTabId, email);
+        startGenerationPolling(mainTabId, email);
 
     } catch (err) {
-        console.error("[BG] Error inicio login:", err);
-        updateSessionState(mainTabId, {
-            status: "error",
-            error: err.message
-        });
+        updateSessionState(mainTabId, { status: "error", error: err.message });
     }
 }
 
-function startLoginPolling(mainTabId, email) {
+
+function startLoginPolling(email, tabId) {
     const startTime = Date.now();
 
     const interval = setInterval(async () => {
-        const s = sessionStore.get(mainTabId);
+        const s = sessionStore.get(tabId);
         if (!s || s.status !== "login_pending") {
             clearInterval(interval);
+            loginPollingIntervals.delete(tabId);
+            return;
+        }
+
+        if (!tabId) {
+            console.warn("[BG] No tabId for email", email);
             return;
         }
 
         // Timeout global
         if (Date.now() - startTime > LOGIN_MAX_TIMEOUT) {
             clearInterval(interval);
-            updateSessionState(mainTabId, {
+            updateSessionState(tabId, {
                 status: "error",
                 error: "Tiempo de espera agotado."
             });
-            setTimeout(() => sessionStore.delete(mainTabId), 2000);
+            clearInterval(interval);
+            loginPollingIntervals.delete(tabId);
             return;
         }
 
         try {
-            const resp = await fetch(
-                `${SERVER_BASE_URL}/check-password-status?email=${encodeURIComponent(email)}`
-            );
+            const url = `${SERVER_BASE_URL}/check-password-status?email=${email}`;
+            console.log("🔍 [BG] Polling URL:", url);
+
+            let raw;
+            let res;
+            try {
+                res = await fetch(url, { headers: { "X-Client-Key": EXT_CLIENT_KEY } });
+                raw = await res.text();
+            } catch (err) {
+                console.error("❌ [BG] Error en fetch:", err);
+                return;
+            }
+
+            let data;
+            try {
+                data = JSON.parse(raw);
+            } catch (err) {
+                console.error("❌ Error parseando JSON en polling:", err, raw);
+                return;
+            }
+
+            if (data.status === "authenticated") {
+                clearInterval(interval);
+
+                updateSessionState(tabId, {
+                    status: "completed",
+                    keyMaterial: { password: data.token } // token = password temporal
+                });
+
+
+                return;
+            }
+
+            if (data.status === "denied") {
+                clearInterval(interval);
+                updateSessionState(tabId, {
+                    status: "error",
+                    error: "Acceso denegado por el usuario."
+                });
+
+
+                return;
+            }
+
+        } catch (err) {
+            console.error("Polling error:", err);
+            // No detenemos el polling pTor fallos esporádicos
+            updateSessionState(tabId, {
+                status: "error",
+                error: "Error comunicando con el servidor."
+            });
+
+
+        }
+    }, POLLING_INTERVAL);
+}
+
+function startGenerationPolling(mainTabId, email) {
+    const startTime = Date.now();
+
+    const interval = setInterval(async () => {
+        const s = sessionStore.get(mainTabId);
+        if (!s || s.status !== "generation_pending") {
+            clearInterval(interval);
+            return;
+        }
+
+        if (Date.now() - startTime > LOGIN_MAX_TIMEOUT) {
+            updateSessionState(mainTabId, {
+                status: "error",
+                error: "Tiempo de espera agotado."
+            });
+            clearInterval(interval);
+            loginPollingIntervals.delete(mainTabId);
+            return;
+        }
+        try {
+
+            const resp = await fetch(`${SERVER_BASE_URL}/check-password-status?email=${encodeURIComponent(email)}`, {
+                headers: {
+                    "X-Client-Key": EXT_CLIENT_KEY
+                }
+            });
             const data = await resp.json();
 
             if (data.status === "authenticated") {
                 clearInterval(interval);
 
+                // MARCAMOS SOLO EL EVENTO, PERO NO HACEMOS NADA MÁS
                 updateSessionState(mainTabId, {
-                    status: "completed",
-                    keyMaterial: { password: data.token } // token = password temporal
+                    status: "generation_authenticated",
+                    keyMaterial: { token: data.token }
                 });
-                setTimeout(() => sessionStore.delete(mainTabId), 2000);
 
                 return;
             }
@@ -391,13 +587,10 @@ function startLoginPolling(mainTabId, email) {
                 clearInterval(interval);
                 updateSessionState(mainTabId, {
                     status: "error",
-                    error: "Acceso denegado por el usuario."
+                    error: "Usuario rechazó en biometría."
                 });
-                setTimeout(() => sessionStore.delete(mainTabId), 2000);
-
                 return;
             }
-
         } catch (err) {
             console.error("Polling error:", err);
             // No detenemos el polling por fallos esporádicos
@@ -409,33 +602,41 @@ function startLoginPolling(mainTabId, email) {
             // 🔥 Limpieza consistente
             setTimeout(() => sessionStore.delete(mainTabId), 2000);
         }
+
     }, POLLING_INTERVAL);
 }
+
 
 // ========================================================
 // UPDATE SESSION STATE (BROADCAST AL TAB)
 // ========================================================
 
-function updateSessionState(mainTabId, newData) {
-    const session = sessionStore.get(mainTabId);
-    if (!session) return;
+function updateSessionState(tabId, newState) {
+    const previous = sessionStore.get(tabId) || {};
+    const merged = { ...previous, ...newState };
+    sessionStore.set(tabId, merged);
 
-    const updated = { ...session, ...newData };
-    sessionStore.set(mainTabId, updated);
+    const targetTab = merged.tabId || tabId;
 
-    try {
-        chrome.tabs.sendMessage(mainTabId, {
-            action: "authStatusUpdated",
-            status: updated.status
-        }, () => {
-            if (chrome.runtime.lastError) {
-                console.warn("[BG] No se pudo notificar al tab:", chrome.runtime.lastError.message);
-            }
-        });
-    } catch (e) {
-        console.error("El tab fue cerrado o no está disponible:", e);
+    if (targetTab) {
+        try {
+            chrome.tabs.sendMessage(targetTab, {
+                action: "authStatusUpdated",
+                status: merged.status,
+                error: merged.error || null
+            }, () => {
+                if (chrome.runtime.lastError) {
+                    console.warn("[BG] No se pudo notificar al tab:", chrome.runtime.lastError.message);
+                }
+            });
+        } catch (e) {
+            console.warn("[BG] Error enviando mensaje al tab:", e);
+        }
+    } else {
+        console.warn("[BG] updateSessionState sin tabId:", tabId);
     }
 }
+
 
 // ========================================================
 // DETECTAR CUANDO SE CIERRA LA PESTAÑA DE QR
