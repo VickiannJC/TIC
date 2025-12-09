@@ -184,7 +184,7 @@ class PsychologicalAnalyzer:
         doc = {
             "user_id_hmac": id_hmac,
             "session_token_hmac": token_hmac,
-            "psy_profile_argon2id": psy_hashed,
+            "psy_profile": psy_hashed,
             "metadata": nueva_metadata
         }
         

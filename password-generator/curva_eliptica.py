@@ -31,8 +31,7 @@ def ecc_desencriptar_password (clave_privada, contrasena):
     except Exception as e:
         print(f"Error durante la desencriptación ECC: {e}")
         return None
-#instalar la librería cryptography si no está instalada
-#pip install cryptography
+
 
 def construir_clave_privada(exponente):
     try:

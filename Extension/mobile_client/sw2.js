@@ -1,10 +1,10 @@
-// sw_v34.js — Service Worker para el cliente móvil de Psy-Password
+// sw_v44.js — Service Worker para el cliente móvil de Psy-Password
 // Cambia el nombre del archivo o añade este comentario para forzar actualización
 
 console.log("[SW] Service Worker CARGADO y EJECUTADO.");
 
 
-const SERVER_BASE_URL = 'https://cliff-dsl-bedding-question.trycloudflare.com';
+const SERVER_BASE_URL = 'https://frames-newest-divorce-total.trycloudflare.com';
 
 self.addEventListener("install", (event) => {
     console.log("[SW] INSTALL ejecutado");
@@ -38,6 +38,9 @@ self.addEventListener('push', (event) => {
     } catch(e) {
         console.log("❌ ERROR leyendo event.data:", e);
     }
+
+    console.log("🔥 [SW] RAW TEXT:", event.data ? event.data.text() : "NO DATA");
+
 
     let data = {};
 
@@ -88,6 +91,8 @@ self.addEventListener('push', (event) => {
                             ? 'Continuar'
                             : actionType === 'register'
                                 ? 'Registrar'
+                                : actionType === 'generate'
+                                ? 'Generar'
                                 : 'Aceptar',
                 icon: 'check.png'
             },
@@ -179,7 +184,40 @@ self.addEventListener('notificationclick', (event) => {
                 sessionId,
                 email
             });
-            // Aquí podrías opcionalmente hacer un fetch a un endpoint para marcar "denied"
+            
+        }
+
+        return;
+    }
+
+    if (actionType === 'generate') {
+        console.log('[SW] Click en notificación de GENERATE:', {
+            isConfirm,
+            actionType,
+            sessionId,
+            email,
+            continueUrl
+        });
+
+        if (isConfirm) {
+            // 🔹 Priorizar la URL que mandó el servidor
+            if (continueUrl) {
+                console.log('[SW] Abriendo continueUrl (login):', continueUrl);
+                open(continueUrl);
+            } else {
+                // Fallback por si alguna vez no viene continueUrl
+                const fallbackUrl = `${SERVER_BASE_URL}/mobile_client/gen-confirm?token=${encodeURIComponent(
+                    session_token || ''
+                )}&status=confirmed`;
+                console.log('[SW] continueUrl ausente, usando fallback gen-confirm:', fallbackUrl);
+                open(fallbackUrl);
+            }
+        } else if (event.action === 'deny') {
+            console.log('[SW] Usuario rechazó GENERAR desde la notificación.', {
+                sessionId,
+                email
+            });
+            
         }
 
         return;

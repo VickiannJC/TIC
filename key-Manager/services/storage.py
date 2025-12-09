@@ -1,8 +1,17 @@
 from motor.motor_asyncio import AsyncIOMotorClient
-from config import MONGO_URI, MONGO_DB_NAME
+from config import MONGO_URI_KEYS, MONGO_URI_PASS, MONGO_DB_KEY, MONGO_DB_PASS
 
-client = AsyncIOMotorClient(MONGO_URI)
-db = client[MONGO_DB_NAME]
+# STORAGE KEY VAULT
+client_key = AsyncIOMotorClient(MONGO_URI_KEYS)
+db_key = client_key[MONGO_DB_KEY]
 
-vault_keys = db["vault_keys"]
-vault_items = db["vault_items"]
+vault_keys = db_key["vault_keys"]
+vault_key_items = db_key["vault_items"]
+
+#STORAGE PASSWORD VAULT
+
+client_pass = AsyncIOMotorClient(MONGO_URI_PASS)
+db_pass = client_pass[MONGO_DB_PASS]
+
+vault_pass = db_pass["vault_keys"]
+vault_pass_items = db_pass["vault_items"]

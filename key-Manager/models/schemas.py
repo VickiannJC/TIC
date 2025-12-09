@@ -1,7 +1,7 @@
 # Modelo estándar para las solicitudes de almacenamiento 
 #  recuperación de claves cifradas
 from pydantic import BaseModel
-from typing import Optional, Dict
+from typing import List, Optional, Dict, Any
 
 class StoreEncryptedItemRequest(BaseModel):
     user_id: str
@@ -18,3 +18,11 @@ class GetKeyMaterialRequest(BaseModel):
     auth_token: str
     user_email: str
     platform_name: str
+
+class GenerationServerRequest(BaseModel):
+    user_id: str
+    platform: str
+    password: str                 # contraseña generada (texto plano)
+    psy_values: List[int]         # o el tipo que estés usando realmente
+    numeric_code: int
+    metadata: Optional[Dict[str, Any]] = None

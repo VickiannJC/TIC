@@ -16,6 +16,11 @@ const TemporalSchema = new mongoose.Schema({
         lowercase: true,
         required: true
     },
+    action: {
+        type: String,
+        enum: ['autenticacion', 'registro', 'generacion'],
+        required: true
+    },
     // pending: recién creado
     // confirmed: usuario aceptó en móvil
     // denied: usuario rechazó
@@ -27,9 +32,10 @@ const TemporalSchema = new mongoose.Schema({
         enum: ['pending', 'confirmed', 'denied', 'biometria_ok', 'biometria_failed', 'used'],
         default: 'pending'
     },
-     // - para LOGIN: es el session_token enviado a Biometría y el token que ve la extensión
+    
+    // - para LOGIN: es el session_token enviado a Biometría y el token que ve la extensión
     // - para REGISTRO: es el session_token enviado a Biometría
-    session_token: { 
+    session_token: {
         type: String,
         default: null
     },

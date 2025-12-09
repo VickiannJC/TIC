@@ -4,14 +4,27 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from psy_analizer import PsychologicalAnalyzer
+from datetime import datetime
+import uuid, json, hmac, hashlib, os, requests
+from seguridad import proteger_id_usuario, descifrar_dict
+from mongo_tracking import new_request, update_request, add_log, get_user_history, get_request
 
+from guardar_analisis import col as psy_col
+from guardar_analisis import buscar_usuario_por_hmac
+
+GEN_SECRET = os.environ["GEN_HMAC_SECRET"]
+GENERATION_SERVER_URL = os.environ["GEN_SERVER_URL"]
 
 
 app = FastAPI()
 analyzer = PsychologicalAnalyzer()
+
+"""
+Registro
+"""
 
 class BioRegistrationPayload(BaseModel):
     email: str
@@ -68,3 +81,132 @@ async def biometric_registration(data: BioRegistrationPayload):
             status_code=500,
             detail=f"Error interno en el analizador: {str(e)}"
         )
+
+"""
+GENERACION DE CONTRASEÑAS
+
+"""
+
+class GeneratorInit(BaseModel):
+    user_id: str
+    session_token: str
+    email: str
+    authenticated: bool
+    platform: str
+
+@app.post("/generator-init")
+async def generator_init(request: Request, data: GeneratorInit):
+
+    # Datos de seguridad
+    ip = request.client.host
+    user_agent = request.headers.get("user-agent", "unknown")
+    print(proteger_id_usuario("mock-user-1234"))
+    # Convertir el user_id real → HMAC para empatar en Mongo
+    user_id_hmac = proteger_id_usuario(data.user_id)
+    # Buscar usuario por HMAC
+    print("DEBUG find_user TYPE:", buscar_usuario_por_hmac)
+
+    user = buscar_usuario_por_hmac(user_id_hmac)
+
+    print("DEBUG → user_id:", data.user_id, type(data.user_id))
+    print("DEBUG → user_id_hmac:", user_id_hmac, type(user_id_hmac))
+
+
+    if not user:
+        return {"success": False, "message": "Usuario no encontrado"}
+
+    # Validar email en metadata
+    emails = user.get("metadata", {}).get("emails", [])
+    if data.email not in emails:
+        return {"success": False, "message": "Email no coincide"}
+
+    # Generar un request_id único
+    request_id = str(uuid.uuid4())
+
+    # Crear registro inicial de tracking
+    new_request({
+        "request_id": request_id,
+        "user_id_hmac": user_id_hmac,
+        "email": data.email,
+        "platform": data.platform,
+        "session_token": data.session_token,
+        "status": "processing",
+        "security": {
+            "ip": ip,
+            "user_agent": user_agent
+        },
+        "logs": [
+            {"at": datetime.utcnow(), "message": "Callback aceptado. Buscando perfil psicológico"}
+        ]
+    })
+
+   # 2) Obtener perfil psicológico cifrado
+    psy_doc = psy_col.find_one({"user_id_hmac": user_id_hmac})
+    if not psy_doc:
+        update_request(request_id, {"status": "failed"})
+        return {"success": False, "message": "Perfil no encontrado", "request_id": request_id}
+
+    try:
+        profile = descifrar_dict(psy_doc["psy_profile"])
+        add_log(request_id, "Perfil psicológico descifrado correctamente")
+    except Exception as e:
+        update_request(request_id, {"status": "failed"})
+        add_log(request_id, f"Error descifrando AES: {e}")
+        return {"success": False, "message": "Error descifrando perfil", "request_id": request_id}
+
+    # 3) Enviar perfil al servidor generador
+    outbound_payload = {
+        "request_id": request_id,
+        "user_id": data.user_id,
+        "email": data.email,
+        "platform": data.platform,
+        "session_token": data.session_token,
+        "psy_profile": profile
+        
+    }
+
+    signature = hmac.new(
+        GEN_SECRET.encode(),
+        json.dumps(outbound_payload, sort_keys=True).encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-Payload-Signature": signature
+    }
+
+    try:
+        resp = requests.post(f"{GENERATION_SERVER_URL}/generate", json=outbound_payload, headers=headers)
+        if resp.status_code != 200:
+            raise Exception(resp.text)
+        add_log(request_id, "Datos enviados al generador final")
+        update_request(request_id, {"status": "completed"})
+    except Exception as e:
+        add_log(request_id, f"Error enviando a generador final: {e}")
+        update_request(request_id, {"status": "failed"})
+        return {"success": False, "message": "Error enviando datos", "request_id": request_id}
+
+    return {
+        "success": True,
+        "message": "Generación iniciada.",
+        "request_id": request_id
+    }
+
+"""
+TRACKING
+
+"""
+@app.get("/generator-status/{request_id}")
+async def generator_status(request_id: str):
+    req = get_request(request_id)
+    if not req:
+        return {"error": "request_not_found"}
+    req["_id"] = str(req["_id"])
+    return req
+@app.get("/generator-history/{user_id_hmac}")
+async def generator_history(user_id_hmac: str):
+    history = get_user_history(user_id_hmac)
+    for h in history:
+        h["_id"] = str(h["_id"])
+    return history

@@ -2,7 +2,7 @@
 // CONFIG
 // ========================================================
 
-const SERVER_BASE_URL = 'https://cliff-dsl-bedding-question.trycloudflare.com';
+const SERVER_BASE_URL = 'https://frames-newest-divorce-total.trycloudflare.com';
 const EXT_CLIENT_KEY = "9afe2270278c6647dc54094103a7e7605d61f9b4c0642baf59559453d41c4c94";
 
 // Poll each interval to check server state (QR + login)
@@ -127,7 +127,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             timestamp: Date.now()
         });
 
-        initiateLogin(email, platform,tabId);
+        initiateLogin(email, platform, tabId);
         sendResponse({ received: true });
         return false;
     }
@@ -155,7 +155,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // CONTENT SCRIPT PREGUNTA POR ESTADO
     // --------------------------------------------
     if (request.action === "checkAuthStatus") {
-        const tabId = inferredTabId; 
+        const tabId = inferredTabId;
 
         if (!tabId) {
             console.warn("[BG] checkAuthStatus sin tabId");
@@ -437,15 +437,19 @@ async function initiateLogin(email, platform, tabId) {
 
 async function initiateGeneration(mainTabId, email, platform) {
     try {
-        const resp = await fetch(`${SERVER_BASE_URL}/request-password-generation`, {
+        const resp = await fetch(`${SERVER_BASE_URL}/request-gen-login`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                "X-Client-Key": EXT_CLIENT_KEY
+            },
             body: JSON.stringify({ email, platform })
         });
 
         if (!resp.ok) {
-            console.error("[BG] Error generación de contraseña:", err);
-            updateSessionState(mainTabId, { status: "error", error: "Error iniciando generación." });
+            const text = await resp.text();
+            console.error("[BG] Error generación de contraseña:", text);
+            updateSessionState(mainTabId, { status: "error", error: text });
             return;
         }
 
@@ -576,8 +580,8 @@ function startGenerationPolling(mainTabId, email) {
 
                 // MARCAMOS SOLO EL EVENTO, PERO NO HACEMOS NADA MÁS
                 updateSessionState(mainTabId, {
-                    status: "generation_authenticated",
-                    keyMaterial: { token: data.token }
+                    status: "completed",
+                    keyMaterial: { token: data.session_token }
                 });
 
                 return;

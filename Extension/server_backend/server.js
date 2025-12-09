@@ -40,7 +40,7 @@ const EXT_CLIENT_KEY = process.env.EXT_CLIENT_KEY; // clave compartida con la ex
 const BIOMETRIA_BASE_URL = process.env.BIOMETRIA_BASE_URL;
 const BIOMETRIA_API_KEY = process.env.BIOMETRIA_API_KEY;
 const BIOMETRIA_JWT_SECRET = process.env.BIOMETRIA_JWT_SECRET;
-const SERVER_BASE_URL = 'https://cliff-dsl-bedding-question.trycloudflare.com';
+const SERVER_BASE_URL = 'https://frames-newest-divorce-total.trycloudflare.com';
 
 const ANALYSIS_BASE_URL = process.env.ANALYSIS_BASE_URL;
 
@@ -476,7 +476,8 @@ app.post('/register-mobile', async (req, res) => {
             email: sessionData.email,
             platform: sessionData.platform || "Unknown",
             session_token: session_token,   // mantener el nombre session_token
-            status: "pending"
+            status: "pending",
+            action: "registro"
         });
 
         // Programar TIMEOUT DE 1 HORA
@@ -823,18 +824,24 @@ app.post("/api/registro-finalizado", async (req, res) => {
 //===========================================================
 //  ENDPOINTS GENERACION 
 //===========================================================
-app.post('/request-password-generation', clientAuth, async (req, res) => {
-    console.log("🟦 [GEN-REQUEST] Inicio de flujo de generación");
+app.post('/request-gen-login', clientAuth, loginRateLimiter, async (req, res) => {
+    console.log("🔵 [GEN-REQUEST] Recibido request-auth-login desde la extensión");
+    console.log("Email:", req.body.email);
+    console.log("Platform:", req.body.platform);
 
     const { email, platform } = req.body;
 
     try {
         const subDoc = await Subscripcion.findOne({ email });
         if (!subDoc) {
-            return res.status(404).json({ error: 'No existe dispositivo vinculado para este email.' });
+            return res.status(404).json({ error: 'No se encontró un dispositivo vinculado para este email.' });
         }
-
-        const challengeId = "GEN_" + Math.random().toString(36).substring(2, 10);
+        await Temporal.deleteMany({
+            email,
+            action: "generacion",
+            status: { $in: ["pending", "confirmed", "denied", "biometria_failed", "used"] }
+        });
+        const challengeId = 'CHLG_' + Math.random().toString(36).substring(2, 9);
         const session_token = generateToken();
 
         const newChallenge = new Temporal({
@@ -842,7 +849,9 @@ app.post('/request-password-generation', clientAuth, async (req, res) => {
             challengeId,
             platform,
             session_token,
-            status: "pending"
+            status: "pending",
+            action: "generacion"
+
         });
         await newChallenge.save();
 
@@ -850,87 +859,169 @@ app.post('/request-password-generation', clientAuth, async (req, res) => {
         const host = req.headers["x-forwarded-host"] || req.headers.host;
         const baseUrl = `${proto}://${host}`;
 
-        const continueUrl = `${baseUrl}/mobile_client/gen-confirm?token=${session_token}&status=confirmed`;
+        const continueUrl = `${baseUrl}/mobile_client/gen-confirm?token=${encodeURIComponent(session_token)}&status=confirmed`;
+        console.log("🔵 [GEN-REQUEST] continueUrl generado:", continueUrl);
 
         const payload = {
-            title: "Generación de Contraseña",
-            body: "Confirma para continuar con la generación segura.",
-            actionType: "generate",
+            title: 'Solicitud de Generación de Contraseña',
+            body: `Se ha solicitado generar una contraseña para: ${email}. Toque "Generar" para continuar.`,
+            actionType: 'generate',
             email,
-            sessionId: challengeId,
-            continueUrl
+            session_token,
+            continueUrl: encodeURI(continueUrl)
         };
 
+        console.log("📦 [GEN-REQUEST] Payload PUSH que se enviará:", payload);
+
+
         const pushResult = await sendPushNotification(subDoc.subscription, payload);
+        console.log("📨 Notificación enviada con éxito", pushResult);
 
         if (!pushResult.success) {
-            return res.status(500).json({ error: 'Error enviando push.' });
+            return res.status(500).json({ error: 'Fallo al enviar notificación Push.' });
         }
 
-        return res.json({
-            ok: true,
-            message: "Notificación enviada al dispositivo.",
+        return res.status(200).json({
+            message: 'Solicitud enviada al móvil.',
             challengeId
         });
 
     } catch (err) {
-        console.error("❌ Error en /request-password-generation:", err);
+        console.error("❌ Error en /request-gen-login:", err);
         return res.status(500).json({ error: "server_error" });
     }
 });
 
 app.get('/mobile_client/gen-confirm', async (req, res) => {
-    const { sessionId: challengeId, status } = req.query;
+    const { token, status } = req.query;
+
+    console.log("🟦 [LOGIN][GEN-CONFIRM] Request recibida:", { status });
+    console.log("🟦 [GEN-CONFIRM] Query params:", req.query);
 
     try {
-        const challenge = await Temporal.findOne({ challengeId });
+        const challenge = await Temporal.findOne({ session_token: token });
+
+        console.log("🟦 [LOGIN][GEN-CONFIRM] Challenge encontrado:", challenge ? {
+            email: challenge.email,
+            action: challenge.action,
+            status: challenge.status,
+            challengeId: challenge.challengeId
+        } : "No encontrado");
 
         if (!challenge) {
-            return res.status(404).send("Desafío inválido.");
+            console.warn("⚠️ [LOGIN][GEN-CONFIRM] Challenge no encontrado.");
+            return res.status(404).send("Desafío inválido o expirado.");
         }
 
         if (status === "confirmed") {
+            if (challenge.status === "pending") {
+                challenge.status = "confirmed";
+                await challenge.save();
+                console.log("🟦 [LOGIN][GEN-CONFIRM] Challenge marcado confirmed");
+            }
+
             const html = loadTemplate("gen_estetico.html")
-                .replace("{{CHALLENGE_ID}}", challengeId);
+                .replace("{{TOKEN}}", token);
+
             return res.send(html);
         }
 
+        // Usuario rechazó en la notificación
         challenge.status = "denied";
         await challenge.save();
-        return res.send("<h1>Generación cancelada por el usuario.</h1>");
+        console.log("🟡 [LOGIN][GEN-CONFIRM] Usuario rechazó.");
+
+        return res.send("<h1>Autenticación GEN rechazada</h1>");
 
     } catch (err) {
-        console.error(err);
+        console.error("❌ [LOGIN][GEN-CONFIRM] Error:", err);
         return res.status(500).send("Error interno.");
     }
 });
 
 app.post('/mobile_client/gen-continue', async (req, res) => {
-    const { challengeId } = req.body;
+    const { token } = req.body;
 
-    console.log("🟦 [GEN-CONTINUE] Recibido:", challengeId);
+    console.log("🟦 [GEN][AUTH-CONTINUE] POST recibido:", { token });
+    console.log("🟦 [GEN-CONTINUE] Body recibido:", req.body);
 
-    const challenge = await Temporal.findOne({ challengeId });
-    if (!challenge) return res.status(404).send("Desafío no encontrado");
 
-    const respBio = await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/authenticate-start`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${BIOMETRIA_API_KEY}`
-        },
-        body: JSON.stringify({
+    if (!token) {
+        console.warn("⚠️ [GEN-CONTINUE] No se recibió token en el POST");
+        return res.status(400).send("Falta token");
+    }
+
+    try {
+        const challenge = await Temporal.findOne({ session_token: token });
+        console.log("🟦 [GEN-CONTINUE] Challenge encontrado:", challenge ? {
+            email: challenge.email,
+            action: challenge.action,
+            status: challenge.status,
+            token: challenge.session_token
+        } : "❌ No encontrado");
+
+
+        if (!challenge) {
+            console.warn("⚠️ [LOGIN][GEN-CONTINUE] Challenge no encontrado para token");
+            await logSecurityEvent("gen_continue_invalid_token", {
+                ip: req.ip,
+                path: req.path,
+                meta: { tokenPrefix: token.slice(0, 8) }
+            });
+            return res.status(404).send("Desafío no encontrado");
+        }
+
+        console.log("❌ [GEN-CONTINUE] Acción inválida:", challenge.action);
+
+
+        if (challenge.action !== "generacion") {
+            return res.status(400).send("Invalid action for gen-continue");
+        }
+
+
+        console.log("🟦 [LOGIN][GEN-CONTINUE] Challenge:", {
             email: challenge.email,
             session_token: challenge.session_token,
-            action: "generacion",  // ← DIFERENCIA CLAVE
-            callback_url: `${SERVER_BASE_URL}/api/biometric-gen-callback`
-        })
-    });
+            status: challenge.status
+        });
 
-    return res.send(`
-        <h1>Verificación iniciada</h1>
-        <p>Realiza la autenticación biométrica en tu app móvil.</p>
-    `);
+        // ✨ AHORA sí inicia biometría
+        const respBio = await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/authenticate-start`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${BIOMETRIA_API_KEY}`
+            },
+            body: JSON.stringify({
+                email: challenge.email,
+                session_token: challenge.session_token,
+                action: "generacion",
+                callback_url: `${SERVER_BASE_URL}/api/biometric-gen-callback`
+            })
+        });
+
+        const dataBio = await respBio.json().catch(() => ({}));
+
+        console.log("🟦 [LOGIN][GEN-CONTINUE] Respuesta authenticate-start:", dataBio);
+
+        if (!respBio.ok || !dataBio.success) {
+            challenge.status = "biometria_failed";
+            await challenge.save();
+            console.error("❌ [LOGIN][GEN-CONTINUE] Error authenticate-start:", dataBio);
+            return res.send("<h1>Error iniciando autenticación biométrica</h1>");
+        }
+
+        console.log("🟢 [LOGIN][GEN-CONTINUE] Biometría iniciada, esperando callback…");
+
+        return res.send(`
+            <h1>Autenticación iniciada</h1>
+            <p>Completa la verificación biométrica en la app.</p>
+        `);
+
+    } catch (err) {
+        console.error("❌ [LOGIN][GEN-CONTINUE] Error:", err);
+        return res.status(500).send("Error interno");
+    }
 });
 
 
@@ -1067,6 +1158,190 @@ app.post('/api/biometric-login-callback', async (req, res) => {
     }
 });
 
+app.post('/api/biometric-gen-callback', async (req, res) => {
+    console.log("🟣 [BIO-CALLBACK] Request recibido del módulo biométrico");
+    console.log("Headers recibidos (sanitizados):", {
+        authorization: req.headers.authorization ? "Bearer ***" : undefined
+    });
+    console.log("Body recibido:", {
+        user_id: req.body.user_id,
+        email: req.body.email,
+        session_token: req.body.session_token,
+        action: req.body.action,
+        authenticated: req.body.authenticated
+    });
+
+    try {
+
+        // 1) Validar API Key
+        const auth = req.headers.authorization || "";
+        const apiKey = auth.replace("Bearer ", "");
+
+        if (apiKey !== BIOMETRIA_API_KEY) {
+            console.warn("⚠ Intento de acceso con API Key inválida en /api/biometric-gen-callback");
+            return res.status(401).json({ error: "unauthorized" });
+        }
+
+        // 2) Extraer datos
+        const {
+            user_id,
+            email,
+            session_token,
+            action,
+            authenticated,
+            jwt: biomJwt
+        } = req.body;
+
+        if (action !== "generacion") {
+            return res.status(400).json({ error: "invalid_action" });
+        }
+
+        if (!email || !session_token) {
+            return res.status(400).json({ error: "email_and_session_token_required" });
+        }
+        console.log("🔎 [BIO-CALLBACK] Buscando Temporal con:");
+        console.log({
+            email: req.body.email,
+            session_token: req.body.session_token
+        });
+
+
+        // 3) Buscar el challenge de LOGIN correspondiente
+        //    Asumimos que guardaste session_token en Temporal.token
+        const temp = await Temporal.findOne({
+            email,
+            session_token
+        }).sort({ createdAt: -1 });
+
+
+        if (!temp) {
+            console.warn("⚠ Callback de autenticación (generacion) sin Temporal activo:", {
+                email,
+                session_token
+            });
+
+            console.error("❌ [BIO-CALLBACK] No existe Temporal para este session_token!");
+            return res.status(404).json({ error: "auth_session_not_found" });
+
+        } else {
+            console.log("🟢 [BIO-CALLBACK] Temporal encontrado:", {
+                id: temp._id,
+                challengeId: temp.challengeId,
+                status: temp.status
+            });
+        }
+
+        console.log("🟦 [GEN][BIO-CALLBACK] Callback recibido:", {
+            email,
+            authenticated,
+            session_token: session_token?.slice(0, 8) + "..."
+        });
+
+        // 4) Si la autenticación fue rechazada
+        if (!authenticated) {
+            temp.status = 'denied';
+            await temp.save();
+            return res.json({ ok: true, authenticated: false });
+        }
+        console.log("🔐 [BIO-CALLBACK] Validando JWT biométrico…");
+
+
+        // 5) Autenticación aceptada → verificar JWT
+        if (!biomJwt) {
+            temp.status = 'biometria_failed';
+            await temp.save();
+            return res.status(400).json({ error: "jwt_required" });
+        }
+
+        const jwtCheck = verifyBiometriaJwt(biomJwt);
+        if (!jwtCheck.ok) {
+            temp.status = 'biometria_failed';
+            await temp.save();
+            await logSecurityEvent("invalid_biometric_jwt", {
+                email,
+                ip: req.ip,
+                path: req.path,
+                userAgent: req.headers["user-agent"],
+                meta: { reason: jwtCheck.error?.message }
+            });
+            return res.status(400).json({ error: "invalid_biometric_jwt" });
+        }
+        console.log("🟢 [BIO-CALLBACK] JWT válido");
+
+        // 6) Marcar como OK y guardar datos
+        temp.status = 'biometria_ok';
+        temp.userBiometriaId = user_id;
+        temp.biometriaJwt = biomJwt;
+        await temp.save();
+
+        // A partir de aquí, la extensión podrá ver:
+        //   status: 'authenticated' y token: temp.token
+        // cuando consulte /check-password-status
+        console.log("✅ [BIO-CALLBACK] Autenticación biométrica completada OK");
+        // ===============================================
+        // 7) LLAMAR A ANALYZER /generator-init
+        // ===============================================
+        try {
+            if (ANALYSIS_BASE_URL) {
+                console.log("🚀 Llamando a ANALYZER /generator-init ...");
+
+                const payload = {
+                    user_id,
+                    session_token,
+                    email,
+                    authenticated: true,
+                    platform: temp.platform || "Unknown"
+                };
+
+                const respAnalyzer = await fetch(`${ANALYSIS_BASE_URL}/generator-init`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                const analyzerData = await respAnalyzer.json().catch(() => ({}));
+
+                console.log("📥 Respuesta de /generator-init:", analyzerData);
+
+                if (!respAnalyzer.ok || analyzerData.success !== true) {
+                    console.error("❌ Analyzer respondió error en generación:", analyzerData);
+
+                    return res.status(500).json({
+                        ok: false,
+                        authenticated: true,
+                        error: "generator_init_failed",
+                        detail: analyzerData.message || "Fallo en servidor de análisis"
+                    });
+                }
+
+                // =====================================
+                // 8) Notificar éxito a la extensión
+                // =====================================
+                console.log("🟢 Generación iniciada correctamente.");
+                return res.json({
+                    ok: true,
+                    authenticated: true,
+                    generator: analyzerData
+                });
+            }
+        } catch (err) {
+            console.error("🔥 Error llamando a ANALYSIS /generator-init:", err);
+            return res.status(500).json({
+                ok: false,
+                authenticated: true,
+                error: "analysis_exception"
+            });
+        }
+
+        return res.json({ ok: true, authenticated: true });
+
+    } catch (err) {
+        console.error("❌ Error en /api/biometric-gen-callback:", err);
+        return res.status(500).json({ error: "server_error" });
+    }
+});
+
+
 
 
 //===========================================================
@@ -1107,7 +1382,7 @@ app.post('/request-auth-login', clientAuth, loginRateLimiter, async (req, res) =
         const baseUrl = `${proto}://${host}`;
 
         const continueUrl = `${baseUrl}/mobile_client/auth-confirm?token=${encodeURIComponent(session_token)}&status=confirmed`;
-         console.log("🔵 [AUTH-REQUEST] continueUrl generado:", continueUrl);
+        console.log("🔵 [AUTH-REQUEST] continueUrl generado:", continueUrl);
 
         const payload = {
             title: 'Solicitud de Inicio de Sesión',
@@ -1115,7 +1390,7 @@ app.post('/request-auth-login', clientAuth, loginRateLimiter, async (req, res) =
             actionType: 'auth',
             email,
             session_token,
-            continueUrl
+            continueUrl: encodeURI(continueUrl)
         };
 
         console.log("📦 [AUTH-REQUEST] Payload PUSH que se enviará:", payload);
@@ -1272,6 +1547,7 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
  *    - Caso contrario, pending.
  */
 app.get('/check-password-status', clientAuth, statusRateLimiter, async (req, res) => {
+    res.setHeader("Content-Type", "application/json");
     const { email } = req.query;
 
     try {

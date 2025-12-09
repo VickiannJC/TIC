@@ -234,7 +234,7 @@ def inspeccion_estructural_contrasena(cadena: str) -> str:
 #---PRUEBAS DE ENTRADA Y SALIDA DE FUNCIONES INDIVIDUAL---#
 # Ejemplo de uso
 nombre_archivo = 'resultado_psicologico_example.json'
-plataforma = "Instagram"
+plataforma = "mock_extaer de la info que manda server_analizer"
 tag = procesador_numerico_password.cargar_tag_redes("redes_sociales_con_tags.json", plataforma)
 print("Tag cargado para Instagram:", tag)
 valores, cadena_usuario = procesador_numerico_password.cargar_valores_de_usuario(nombre_archivo)

@@ -48,7 +48,7 @@ function findEmailField() {
     );
 }
 
-// Detectar plataforma a partir del dominio
+// Detectar plataforma a partir del domo
 function getPlatformName() {
     const host = window.location.hostname;
     const parts = host.split('.');

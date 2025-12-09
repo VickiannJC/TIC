@@ -25,7 +25,6 @@ def buscar_usuario_por_hmac(id_hmac):
     Retorna el documento completo si existe, o None si no.
     """
     try:
-        # Reemplaza 'collection' por tu variable real de conexión a Mongo
         usuario = col.find_one({"user_id_hmac": id_hmac})
         return usuario
     except Exception as e:

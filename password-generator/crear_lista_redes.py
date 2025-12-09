@@ -87,13 +87,14 @@ def actualizar_todos_tags(nombre_archivo_json: str):
     print(f"Se actualizaron los tags de {num_redes} redes sociales a nuevos valores únicos.")
 
 
-"""
+
 print("--- Ejecutando Demostración ---")
 nombre_archivo = "redes_sociales_con_tags.json"
 
 # 1. Intentamos añadir un nuevo elemento
-nueva_red("Pinterest", nombre_archivo)
+nueva_red("Facebook", nombre_archivo)
 
+"""
 # 2. Intentamos añadir un elemento que ya está
 nueva_red("Pinterest", nombre_archivo)
 
