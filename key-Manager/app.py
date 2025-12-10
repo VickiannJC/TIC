@@ -7,8 +7,8 @@ from services.storage import vault_password
 from services.password_service import get_plain_password_for_user
 from services.auth_service import verify_auth_token_with_backend
 from cryptography.hazmat.primitives import serialization
-from crypto.aes_gcm import encrypt_with_kdb
-from crypto import password_generation
+from km_crypto.aes_gcm import encrypt_with_kdb
+from services import password_generation
 from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
@@ -31,6 +31,7 @@ async def store_encrypted_item(req: StoreEncryptedItemRequest):
 
     key_id = await store_key(
         user_id=req.user_id,
+        email=req.email,
         module_type=req.module_type,
         purpose=req.purpose,
         platform=req.platform,
@@ -56,6 +57,7 @@ async def store_encrypted_item(req: StoreEncryptedItemRequest):
             "vault_id": vault_id,
             "key_id": key_id,
             "user_id": req.user_id,
+            "email": req.email,
             "module_type": req.module_type,
             "purpose": req.purpose,
             "platform": req.platform,
@@ -81,7 +83,7 @@ GENERACION DE CONTRASEÑA
 class KeyManagerPayload(BaseModel):
     user_id: str
     session_token: Optional[str] 
-    user_email: str
+    email: str
     platform_name: str
     purpose: str                           # "PASSWORD"
     password: str                          # contraseña generada
@@ -100,7 +102,13 @@ async def process_generation(
 ):
     # Validar API KEY
     if not authorization or authorization.replace("Bearer ", "") != API_KEY:
+        print("❌ ERROR: Invalid API key")
         raise HTTPException(status_code=401, detail="Invalid API key")
+    
+    print("\n======================")
+    print("📥 DEBUG: Payload recibido en KeyManager")
+    print(req)
+    print("======================\n")
 
     # Validar propósito
     if req.purpose != "PASSWORD":
@@ -113,54 +121,70 @@ async def process_generation(
     try:
         metadata = {
             "request_id": req.request_id,
-            "auth_token": req.auth_token,
-            "user_email": req.user_email
+            "session_token": req.session_token
         }
 
         # 1) Calcular exponente
+        print("➡️ Calculando exponente...")
         exponente = password_generation.calcular_exponente(req.psy_values, req.numeric_code)
+        print("✔ Exponente generado:", exponente)
 
         # 2) ECC private key + public key
+        print("➡️ Construyendo clave privada ECC...")
         llave_privada = password_generation.construir_clave_privada(exponente)
         if llave_privada is None:
             raise ValueError("No se pudo construir la clave privada ECC")
+        print("✔ Clave privada ECC OK:", type(llave_privada))
+
         llave_publica = llave_privada.public_key()
+        print("✔ Clave pública ECC OK:", type(llave_publica))
 
         # 3) Cifrar la contraseña
+        print("➡️ Cifrando contraseña mediante ECC...")
         pw_bytes = req.password.encode()
         cipher_struct = password_generation.ecc_encriptar_password(llave_publica, pw_bytes)
+        print("✔ Cipher_struct generado:")
+        print(cipher_struct)
 
         # 4) Serializar private key
-
+        print("➡️ Serializando clave privada a DER...")
         priv_bytes = llave_privada.private_bytes(
             encoding=serialization.Encoding.DER,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption()
         )
+        print("✔ private_key_bytes length:", len(priv_bytes))
+
 
         # 5) Guardar private key en vault_keys
+        print("➡️ Guardando clave privada en vault_keys...")
         key_id = await store_key(
             user_id=req.user_id,
+            email=req.email,
             module_type="PASSWORD_GENERATOR",
             purpose="ECC_PRIVATE_KEY",
-            platform=req.platform_name,
+            platform=req.platform,
             key_material_raw=priv_bytes,
             key_algo="ECC",
             metadata=metadata
         )
+        print("✔ Key guardada con key_id:", key_id)
 
         # 6) Guardar ciphertext en vault_passwords
+        print("➡️ Guardando ciphertext en vault_password...")
         await store_password_ciphertext(
             pass_id=key_id,
             user_id=req.user_id,
-            user_email=req.user_email,
-            platform=req.platform_name,
+            email=req.email,
+            platform=req.platform,
             cipher_struct=cipher_struct,
             key_algo="ECC",
             metadata=metadata
         )
+        print("✔ Ciphertext guardado correctamente")
 
         return {"status": "ok", "key_id": key_id}
 
     except Exception as e:
+        print("🔥 EXCEPCIÓN DETECTADA EN KM:", str(e))
         raise HTTPException(status_code=500, detail=str(e))

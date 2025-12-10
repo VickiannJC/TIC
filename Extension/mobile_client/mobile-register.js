@@ -3,7 +3,7 @@
  * y enviarla al servidor Node.js.
  */
 // URL base de tu servidor Node.js
-const SERVER_BASE_URL = 'https://frames-newest-divorce-total.trycloudflare.com';
+const SERVER_BASE_URL = 'https://life-creator-smithsonian-output.trycloudflare.com';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // --- FIX: evitar doble ejecución si el usuario abre varias veces ---

@@ -5,12 +5,13 @@
 # services/key_service.py
 import uuid
 from datetime import datetime
-from crypto.aes_gcm import encrypt_with_kdb, decrypt_with_kdb
+from km_crypto.aes_gcm import encrypt_with_kdb, decrypt_with_kdb
 from config import K_DB_KEYS
 from .storage import vault_keys
 
 async def store_key(
     user_id: str,
+    email: str,
     module_type: str,
     purpose: str,
     platform: str | None,
@@ -26,6 +27,7 @@ async def store_key(
     doc = {
         "key_id": key_id,
         "user_id": user_id,
+        "email": email,
         "module_type": module_type,
         "purpose": purpose,
         "platform": platform,
@@ -41,12 +43,14 @@ async def store_key(
 
 async def get_key_material(
     user_id: str,
+    email: str,
     module_type: str,
     purpose: str,
     platform: str | None
 ):
     doc = await vault_keys.find_one({
         "user_id": user_id,
+        "email": email,
         "module_type": module_type,
         "purpose": purpose,
         "platform": platform,

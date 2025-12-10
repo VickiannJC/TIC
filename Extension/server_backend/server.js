@@ -40,7 +40,7 @@ const EXT_CLIENT_KEY = process.env.EXT_CLIENT_KEY; // clave compartida con la ex
 const BIOMETRIA_BASE_URL = process.env.BIOMETRIA_BASE_URL;
 const BIOMETRIA_API_KEY = process.env.BIOMETRIA_API_KEY;
 const BIOMETRIA_JWT_SECRET = process.env.BIOMETRIA_JWT_SECRET;
-const SERVER_BASE_URL = 'https://frames-newest-divorce-total.trycloudflare.com';
+const SERVER_BASE_URL = 'https://life-creator-smithsonian-output.trycloudflare.com';
 
 const ANALYSIS_BASE_URL = process.env.ANALYSIS_BASE_URL;
 
@@ -1721,6 +1721,24 @@ app.get("/mobile_client/registro-completado", (req, res) => {
         return res.status(500).send("Error interno mostrando la confirmación de registro.");
     }
 });
+
+//===========================================================
+//  confirmacion SESSION_TOKEN con KM TOKEN
+//===========================================================
+app.post("/validate-km-token", async (req, res) => {
+    const { token, email } = req.body;
+
+    // Verifica en Temporal si existe un challenge con ese token
+    const temp = await Temporal.findOne({ email, session_token: token });
+
+    if (!temp) {
+        return res.status(404).json({ valid: false });
+    }
+
+    // Si existe
+    return res.status(200).json({ valid: true });
+});
+
 
 
 //===========================================================

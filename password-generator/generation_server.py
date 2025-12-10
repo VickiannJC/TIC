@@ -73,10 +73,14 @@ def verify_payload_signature(body: Dict[str, Any], header_sig: Optional[str]) ->
     usando HMAC-SHA256 con GEN_HMAC_SECRET.
 
     """
+    print("DEBUG Inside verify_payload_signature")
+    print("DEBUG body:", body)
+    print("DEBUG header_sig:", header_sig)
     if not header_sig:
         raise HTTPException(status_code=401, detail="Missing X-Payload-Signature header")
 
     body_canon = json.dumps(body, sort_keys=True).encode("utf-8")
+    print("DEBUG body_canon:", body_canon)
     expected_sig = hmac.new(
         GEN_HMAC_SECRET.encode("utf-8"),
         body_canon,
@@ -84,8 +88,11 @@ def verify_payload_signature(body: Dict[str, Any], header_sig: Optional[str]) ->
     ).hexdigest()
 
    
+    print("DEBUG expected_sig:", expected_sig)
     if not hmac.compare_digest(expected_sig, header_sig):
+        print("❌ Firma inválida")
         raise HTTPException(status_code=401, detail="Invalid payload signature")
+    print("✔ Firma válida")
 
 
 def extract_valores_and_cadena(psy_profile: PsyProfile, email: str, platform: str) -> tuple[list[float], str]:
@@ -160,17 +167,21 @@ async def generate_password(request: Request):
 
     try:
         body = await request.json()
+        print("DEBUG Body recibido:", body)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
 
     # Verificar firma HMAC del payload
     header_sig = request.headers.get("X-Payload-Signature")
+    print("DEBUG Firma recibida:", header_sig)
     verify_payload_signature(body, header_sig)
 
     #  Validar estructura con Pydantic
     try:
         data = GenerationPayload(**body)
+        print("✔ Payload Pydantic validado correctamente")
     except ValidationError as e:
+        print("❌ Error Pydantic:", e.json())
         raise HTTPException(status_code=400, detail=f"Invalid payload structure: {e}")
 
     platform = data.platform.lower().strip()
@@ -247,7 +258,7 @@ async def generate_password(request: Request):
         "psy_values": valores,
         "request_id": data.request_id,
     }
-    print(km_payload)
+    print("DEBUG km_payload generado:", km_payload)
 
     # Enviar al Key-Manager (HTTPS + API KEY)
     send_to_key_manager(km_payload)

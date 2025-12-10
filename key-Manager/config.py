@@ -2,7 +2,7 @@
 # Configuración -> derivar clave maestra -> con Argon2id para cifrado en reposo
 import os
 from dotenv import load_dotenv
-from crypto.kdf import derive_kdb
+from km_crypto.kdf import derive_kdb
 
 load_dotenv()
 

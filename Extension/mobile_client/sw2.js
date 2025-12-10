@@ -4,7 +4,7 @@
 console.log("[SW] Service Worker CARGADO y EJECUTADO.");
 
 
-const SERVER_BASE_URL = 'https://frames-newest-divorce-total.trycloudflare.com';
+const SERVER_BASE_URL = 'https://life-creator-smithsonian-output.trycloudflare.com';
 
 self.addEventListener("install", (event) => {
     console.log("[SW] INSTALL ejecutado");

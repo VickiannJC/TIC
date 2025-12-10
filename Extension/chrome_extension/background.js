@@ -2,7 +2,7 @@
 // CONFIG
 // ========================================================
 
-const SERVER_BASE_URL = 'https://frames-newest-divorce-total.trycloudflare.com';
+const SERVER_BASE_URL = 'https://life-creator-smithsonian-output.trycloudflare.com';
 const EXT_CLIENT_KEY = "9afe2270278c6647dc54094103a7e7605d61f9b4c0642baf59559453d41c4c94";
 
 // Poll each interval to check server state (QR + login)

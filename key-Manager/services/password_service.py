@@ -3,8 +3,8 @@
 
 import json
 from typing import Optional
-from crypto.aes_gcm import decrypt_with_kdb
-from crypto.ecc_wrapper import ecc_desencriptar_password, cargar_llave_privada_desde_bytes
+from km_crypto.aes_gcm import decrypt_with_kdb
+from km_crypto.ecc_wrapper import ecc_desencriptar_password, cargar_llave_privada_desde_bytes
 from config import K_DB_PASS
 from .storage import vault_password
 from .key_service import get_key_material

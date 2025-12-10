@@ -164,6 +164,8 @@ async def generator_init(request: Request, data: GeneratorInit):
         "psy_profile": profile
         
     }
+    print("DEBUG PROFILE REAL:", profile)
+    print("DEBUG Outbound payload:", outbound_payload)
 
     signature = hmac.new(
         GEN_SECRET.encode(),

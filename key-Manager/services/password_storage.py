@@ -1,14 +1,14 @@
 import uuid
 from datetime import datetime
 import json
-from crypto.aes_gcm import encrypt_with_kdb
+from km_crypto.aes_gcm import encrypt_with_kdb
 from config import K_DB_PASS
 from .storage import vault_password
 
 async def store_password_ciphertext(
     pass_id: str,
     user_id: str,
-    user_email: str,
+    email: str,
     platform: str,
     cipher_struct: dict,
     key_algo: str,
@@ -36,7 +36,7 @@ async def store_password_ciphertext(
     doc = {
         "pass_id": pass_id,
         "user_id": user_id,
-        "user_email": user_email,
+        "email": email,
         "platform": platform,
         "ciphertext_encrypted": encrypted,
         "key_algo": key_algo,
