@@ -21,8 +21,11 @@ class GetKeyMaterialRequest(BaseModel):
 
 class GenerationServerRequest(BaseModel):
     user_id: str
+    session_token: str
+    email: str
     platform: str
-    password: str                 # contraseña generada (texto plano)
-    psy_values: List[int]         # o el tipo que estés usando realmente
+    purpose: str
+    password: str
     numeric_code: int
-    metadata: Optional[Dict[str, Any]] = None
+    psy_values: list
+    request_id: str

@@ -16,8 +16,9 @@ from cryptography.hazmat.backends import default_backend
 # Desemcriptar la contraseña usando curva elíptica
 def ecc_desencriptar_password (clave_privada, contrasena):
     try: 
+        ephemeral_public_bytes = contrasena["ephemeral_public"]
         ephemeral_public = ec.EllipticCurvePublicKey.from_encoded_point(
-            ec.SECP256R1(), contrasena["ephemeral_public"]
+            ec.SECP256R1(), ephemeral_public_bytes
         )
         clave_compartida = clave_privada.exchange(ec.ECDH(), ephemeral_public)
 
@@ -25,7 +26,7 @@ def ecc_desencriptar_password (clave_privada, contrasena):
         clave_derivada = HKDF(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=None,
+            salt=ephemeral_public_bytes,
             info=b"encriptacion ecc password",
             backend=default_backend(),
         ).derive(clave_compartida)
@@ -33,7 +34,7 @@ def ecc_desencriptar_password (clave_privada, contrasena):
         cifrador = Cipher(algorithms.AES(clave_derivada), modes.GCM(contrasena["iv"], contrasena["tag"]), backend=default_backend())
         desencriptador = cifrador.decryptor()
         texto_plano = desencriptador.update(contrasena["ciphertext"]) + desencriptador.finalize()
-        return texto_plano.decode()
+        return texto_plano.decode('utf-8')
     except Exception as e:
         print(f"Error durante la desencriptación ECC: {e}")
         return None
@@ -43,9 +44,9 @@ def cargar_llave_privada_desde_bytes(llave_privada_bytes: bytes, contrasena: byt
     try:
         # Usa load_pem_private_key para cargar la clave. 
         # Esta función es versátil para varios formatos comunes.
-        llave_privada = serialization.load_pem_private_key(
+        llave_privada = serialization.load_der_private_key(
             data=llave_privada_bytes,
-            password=contrasena, # Puede ser None si no hay contraseña
+            password=contrasena,
             backend=default_backend()
         )
         return llave_privada
@@ -63,8 +64,8 @@ def cargar_llave_privada_desde_bytes(llave_privada_bytes: bytes, contrasena: byt
 def ecc_decrypt_password(private_key_bytes: bytes, ciphertext_b64: str) -> str:
     ciphertext = base64.b64decode(ciphertext_b64.encode("utf-8"))
     private_key = cargar_llave_privada_desde_bytes(private_key_bytes)
-    pw_bytes = ecc_desencriptar_password(private_key, ciphertext)
-    return pw_bytes.decode("utf-8")
+    pw_str = ecc_desencriptar_password(private_key, ciphertext)
+    return pw_str
 
 
 

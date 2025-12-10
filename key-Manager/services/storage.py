@@ -13,5 +13,5 @@ vault_key_items = db_key["vault_items"]
 client_pass = AsyncIOMotorClient(MONGO_URI_PASS)
 db_pass = client_pass[MONGO_DB_PASS]
 
-vault_pass = db_pass["vault_keys"]
-vault_pass_items = db_pass["vault_items"]
+vault_password = db_pass["vault_password"]
+vault_password_items = db_pass["vault_items"]

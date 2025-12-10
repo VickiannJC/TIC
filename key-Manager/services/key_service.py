@@ -6,7 +6,7 @@
 import uuid
 from datetime import datetime
 from crypto.aes_gcm import encrypt_with_kdb, decrypt_with_kdb
-from config import K_DB
+from config import K_DB_KEYS
 from .storage import vault_keys
 
 async def store_key(
@@ -21,7 +21,7 @@ async def store_key(
 ) -> str:
     key_id = str(uuid.uuid4())
     aad = f"{user_id}|{module_type}|{purpose}".encode("utf-8")
-    enc = encrypt_with_kdb(K_DB, key_material_raw, aad=aad)
+    enc = encrypt_with_kdb(K_DB_KEYS, key_material_raw, aad=aad)
 
     doc = {
         "key_id": key_id,
@@ -56,5 +56,5 @@ async def get_key_material(
         return None, None
 
     aad = f"{doc['user_id']}|{doc['module_type']}|{doc['purpose']}".encode("utf-8")
-    key_bytes = decrypt_with_kdb(K_DB, doc["key_material_encrypted"], aad=aad)
+    key_bytes = decrypt_with_kdb(K_DB_KEYS, doc["key_material_encrypted"], aad=aad)
     return key_bytes, doc["key_id"]

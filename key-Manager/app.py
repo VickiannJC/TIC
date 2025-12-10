@@ -1,16 +1,19 @@
 # app.py
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from models.schemas import StoreEncryptedItemRequest, GetKeyMaterialRequest, GenerationServerRequest
 from services.key_service import store_key
 from services.password_storage import store_password_ciphertext
-from services.storage import vault_items
+from services.storage import vault_password
 from services.password_service import get_plain_password_for_user
 from services.auth_service import verify_auth_token_with_backend
+from cryptography.hazmat.primitives import serialization
+from crypto.aes_gcm import encrypt_with_kdb
 from crypto import password_generation
 from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
 import uuid, os
+from config import K_DB_PASS
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -39,22 +42,33 @@ async def store_encrypted_item(req: StoreEncryptedItemRequest):
     vault_id = None
     if req.ciphertext_b64:
         vault_id = str(uuid.uuid4())
+
+        # DESCODIFICAR ciphertext base64 recibido
+        raw_ciphertext = base64.b64decode(req.ciphertext_b64.encode("utf-8"))
+
+        # AAD coherente con el resto del KM
+        aad = f"{req.user_id}|{req.module_type}|{req.purpose}".encode("utf-8")
+
+        # Cifrar con AES-GCM(K_DB_PASS)
+        encrypted_ct = encrypt_with_kdb(K_DB_PASS, raw_ciphertext, aad=aad)
+
         doc = {
             "vault_id": vault_id,
             "key_id": key_id,
             "user_id": req.user_id,
             "module_type": req.module_type,
-            "purpose": "PASSWORD_CIPHERTEXT" if req.module_type == "PASSWORD_GENERATOR" else req.purpose,
+            "purpose": req.purpose,
             "platform": req.platform,
-            "ciphertext": req.ciphertext_b64,
+            "ciphertext_encrypted": encrypted_ct,   # <-- unificado
             "ciphertext_type": req.ciphertext_type,
             "metadata": req.metadata or {},
             "created_at": datetime.utcnow(),
             "active": True
         }
-        await vault_items.insert_one(doc)
+        await vault_password.insert_one(doc)
 
     return {"status": "ok", "key_id": key_id, "vault_id": vault_id}
+
 
 """
 GENERACION DE CONTRASEÑA
@@ -66,7 +80,7 @@ GENERACION DE CONTRASEÑA
 # ---------------------------
 class KeyManagerPayload(BaseModel):
     user_id: str
-    auth_token: Optional[str] 
+    session_token: Optional[str] 
     user_email: str
     platform_name: str
     purpose: str                           # "PASSWORD"
@@ -80,56 +94,73 @@ class KeyManagerPayload(BaseModel):
 #  RECIBIR CONTRASEÑA
 # ---------------------------
 @app.post("/process_generation")
-async def process_generation(req: GenerationServerRequest):
+async def process_generation(
+    req: GenerationServerRequest,
+    authorization: str = Header(None)
+):
+    # Validar API KEY
+    if not authorization or authorization.replace("Bearer ", "") != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    # Validar propósito
+    if req.purpose != "PASSWORD":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid purpose: {req.purpose}. Expected 'PASSWORD'."
+        )
+
+
     try:
-        # 1. Calcular exponente a partir de psy_values y numeric_code
+        metadata = {
+            "request_id": req.request_id,
+            "auth_token": req.auth_token,
+            "user_email": req.user_email
+        }
+
+        # 1) Calcular exponente
         exponente = password_generation.calcular_exponente(req.psy_values, req.numeric_code)
 
-        # 2. Construir llave privada ECC y llave pública
+        # 2) ECC private key + public key
         llave_privada = password_generation.construir_clave_privada(exponente)
+        if llave_privada is None:
+            raise ValueError("No se pudo construir la clave privada ECC")
         llave_publica = llave_privada.public_key()
 
-        # 3. Cifrar la contraseña generada con ECC
-        password_bytes = req.password.encode("utf-8")
-        cipher_struct = password_generation.ecc_encriptar_password(llave_publica, password_bytes)
-        # cipher_struct debería ser un dict con ephemeral_public, iv, ciphertext, tag
+        # 3) Cifrar la contraseña
+        pw_bytes = req.password.encode()
+        cipher_struct = password_generation.ecc_encriptar_password(llave_publica, pw_bytes)
 
-        # 4. Serializar la private key a bytes para guardarla en el KM
-        #    (ajusta esto según cómo se defina tu tipo de clave)
-        from cryptography.hazmat.primitives import serialization
+        # 4) Serializar private key
 
-        private_key_bytes = llave_privada.private_bytes(
+        priv_bytes = llave_privada.private_bytes(
             encoding=serialization.Encoding.DER,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption()
         )
 
-        # 5. Guardar la clave en la DB de KEYS (KM)
+        # 5) Guardar private key en vault_keys
         key_id = await store_key(
             user_id=req.user_id,
             module_type="PASSWORD_GENERATOR",
             purpose="ECC_PRIVATE_KEY",
-            platform=req.platform,
-            key_material_raw=private_key_bytes,
+            platform=req.platform_name,
+            key_material_raw=priv_bytes,
             key_algo="ECC",
-            sensitivity="HIGH",
-            metadata=req.metadata
+            metadata=metadata
         )
 
-        # 6. Guardar el ciphertext ECC en la DB de PASSWORDS
+        # 6) Guardar ciphertext en vault_passwords
         await store_password_ciphertext(
             pass_id=key_id,
             user_id=req.user_id,
-            platform=req.platform,
+            user_email=req.user_email,
+            platform=req.platform_name,
             cipher_struct=cipher_struct,
             key_algo="ECC",
-            metadata=req.metadata
+            metadata=metadata
         )
 
-        return {
-            "status": "ok",
-            "key_id": key_id
-        }
+        return {"status": "ok", "key_id": key_id}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en process_generation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -90,8 +90,9 @@ def construir_clave_privada(exponente):
     
 def ecc_desencriptar_password (clave_privada, contrasena):
     try: 
+        ephemeral_public_bytes = contrasena["ephemeral_public"]
         ephemeral_public = ec.EllipticCurvePublicKey.from_encoded_point(
-            ec.SECP256R1(), contrasena["ephemeral_public"]
+            ec.SECP256R1(), ephemeral_public_bytes
         )
         clave_compartida = clave_privada.exchange(ec.ECDH(), ephemeral_public)
 
@@ -99,7 +100,7 @@ def ecc_desencriptar_password (clave_privada, contrasena):
         clave_derivada = HKDF(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=None,
+            salt=ephemeral_public_bytes,
             info=b"encriptacion ecc password",
             backend=default_backend(),
         ).derive(clave_compartida)
@@ -114,14 +115,19 @@ def ecc_desencriptar_password (clave_privada, contrasena):
     
 def ecc_encriptar_password(clave_publica, contrasena):
     try:
-        efímera_privada = ec.generate_private_key(ec.SECP256R1(), default_backend())
-        clave_compartida = efímera_privada.exchange(ec.ECDH(), clave_publica)
+        efimera_privada = ec.generate_private_key(ec.SECP256R1(), default_backend())
+        ephemeral_public_obj = efimera_privada.public_key()
+        ephemeral_public_bytes = ephemeral_public_obj.public_bytes(
+            encoding=serialization.Encoding.X962,
+            format=serialization.PublicFormat.UncompressedPoint,
+        )
+        clave_compartida = efimera_privada.exchange(ec.ECDH(), clave_publica)
 
         # Derivar una clave simétrica de la clave compartida (aquí simplemente truncamos para el ejemplo)
         clave_derivada = HKDF(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=None,
+            salt=ephemeral_public_bytes,
             info=b"encriptacion ecc password",
             backend=default_backend()
         ).derive(clave_compartida)
@@ -142,11 +148,7 @@ def ecc_encriptar_password(clave_publica, contrasena):
         texto_cifrado = cifrador.update(contrasena_bytes) + cifrador.finalize()
 
         return {
-            "ephemeral_public": efímera_privada.public_key().public_bytes(
-                encoding=serialization.Encoding.X962,
-                format=serialization.PublicFormat.UncompressedPoint,
-
-            ),
+            "ephemeral_public": ephemeral_public_bytes,
             "iv": vector_inicializacion,
             "ciphertext": texto_cifrado,
             "tag": cifrador.tag

@@ -239,7 +239,7 @@ async def generate_password(request: Request):
     km_payload = {
         "user_id": data.user_id,
         "session_token": data.session_token, 
-        "user_email": data.email,
+        "email": data.email,
         "platform": platform,
         "purpose": "PASSWORD",
         "password": contrasena,
