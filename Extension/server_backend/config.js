@@ -15,3 +15,4 @@ module.exports = {
     MONGODB_URI,
     VAPID_MOBILE_KEY: VAPID_PUBLIC_KEY
 };
+

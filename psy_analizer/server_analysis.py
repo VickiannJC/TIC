@@ -11,16 +11,29 @@ from datetime import datetime
 import uuid, json, hmac, hashlib, os, requests
 from seguridad import proteger_id_usuario, descifrar_dict
 from mongo_tracking import new_request, update_request, add_log, get_user_history, get_request
-
+import os, json
+from typing import Any
 from guardar_analisis import col as psy_col
 from guardar_analisis import buscar_usuario_por_hmac
+import requests
 
 GEN_SECRET = os.environ["GEN_HMAC_SECRET"]
 GENERATION_SERVER_URL = os.environ["GEN_SERVER_URL"]
-
+session = requests.Session()
 
 app = FastAPI()
 analyzer = PsychologicalAnalyzer()
+
+DEBUG_LOGS = os.environ.get("ANALYSIS_DEBUG", "false").lower() == "true"
+
+def canonical_json(obj: Any) -> bytes:
+    return json.dumps(
+        obj,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
 
 """
 Registro
@@ -87,6 +100,7 @@ GENERACION DE CONTRASEÑAS
 
 """
 
+
 class GeneratorInit(BaseModel):
     user_id: str
     session_token: str
@@ -100,17 +114,12 @@ async def generator_init(request: Request, data: GeneratorInit):
     # Datos de seguridad
     ip = request.client.host
     user_agent = request.headers.get("user-agent", "unknown")
-    print(proteger_id_usuario("mock-user-1234"))
     # Convertir el user_id real → HMAC para empatar en Mongo
     user_id_hmac = proteger_id_usuario(data.user_id)
     # Buscar usuario por HMAC
     print("DEBUG find_user TYPE:", buscar_usuario_por_hmac)
 
     user = buscar_usuario_por_hmac(user_id_hmac)
-
-    print("DEBUG → user_id:", data.user_id, type(data.user_id))
-    print("DEBUG → user_id_hmac:", user_id_hmac, type(user_id_hmac))
-
 
     if not user:
         return {"success": False, "message": "Usuario no encontrado"}
@@ -164,22 +173,25 @@ async def generator_init(request: Request, data: GeneratorInit):
         "psy_profile": profile
         
     }
-    print("DEBUG PROFILE REAL:", profile)
-    print("DEBUG Outbound payload:", outbound_payload)
 
+    body_bytes = canonical_json(outbound_payload)
     signature = hmac.new(
-        GEN_SECRET.encode(),
-        json.dumps(outbound_payload, sort_keys=True).encode(),
+        GEN_SECRET.encode("utf-8"),
+        body_bytes,
         hashlib.sha256
     ).hexdigest()
-
     headers = {
         "Content-Type": "application/json",
         "X-Payload-Signature": signature
     }
+    
+    if DEBUG_LOGS:
+        print("DEBUG Enviando al generador final:")
+        print("DEBUG Headers:", headers)
+        print("DEBUG Body:", outbound_payload)
 
     try:
-        resp = requests.post(f"{GENERATION_SERVER_URL}/generate", json=outbound_payload, headers=headers)
+        resp = session.post(f"{GENERATION_SERVER_URL}/generate", json=outbound_payload, headers=headers, timeout=5)
         if resp.status_code != 200:
             raise Exception(resp.text)
         add_log(request_id, "Datos enviados al generador final")
@@ -191,7 +203,7 @@ async def generator_init(request: Request, data: GeneratorInit):
 
     return {
         "success": True,
-        "message": "Generación iniciada.",
+        "message": "Generación exitosa.",
         "request_id": request_id
     }
 

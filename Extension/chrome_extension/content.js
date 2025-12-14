@@ -5,29 +5,76 @@
 // Estado interno local del content script
 let myPasswordField = null;
 
+let lastInjectedPassword = null;
+
+// --- Control de ping al background ---
+let pingIntervalId = null;
+let pingFailures = 0;
+let hasWarnedPing = false;
+const MAX_PING_FAILURES = 5;
+
 function pingBackground() {
-    chrome.runtime.sendMessage({ action: "ping" }, () => {});
+    return new Promise((resolve, reject) => {
+        try {
+            chrome.runtime.sendMessage(
+                { action: "ping" },
+                (response) => {
+                    if (chrome.runtime.lastError) {
+                        return reject(chrome.runtime.lastError);
+                    }
+                    resolve(response);
+                }
+            );
+        } catch (e) {
+            reject(e);
+        }
+    });
 }
 
-setInterval(() => {
-    try {
-        pingBackground();
-    } catch (e) {
-        console.warn("[CS] Reconectando a background…");
-    }
-}, 3000);
+
+function startBackgroundPing() {
+    // Si ya hay un intervalo activo, no crear otro
+    if (pingIntervalId !== null) return;
+
+    pingIntervalId = setInterval(async () => {
+        try {
+            // Si el background está vivo, esto no debería lanzar error.
+            await pingBackground();
+            // Si llega aquí, resetear contador de fallos
+            pingFailures = 0;
+        } catch (e) {
+            pingFailures += 1;
+
+            // Mostrar el warning SOLO la primera vez
+            if (!hasWarnedPing) {
+                console.warn("[CS] No se pudo comunicar con background. Reintentando...");
+                hasWarnedPing = true;
+            }
+
+            // Si lleva demasiados fallos, dejar de intentarlo
+            if (pingFailures >= MAX_PING_FAILURES) {
+                clearInterval(pingIntervalId);
+                pingIntervalId = null;
+                console.warn("[CS] Ping a background desactivado tras múltiples fallos.");
+            }
+        }
+    }, 3000);
+}
+
 
 
 // ========================================================
 // 1) DETECCIÓN DE CAMPOS DEL SITIO
 // ========================================================
 
-// Encuentra un campo de contraseña visible (mejorado)
+// Encuentra un campo de contraseña visible 
 function findPasswordField() {
     const selectors = [
         'input[type="password"]',
         'input[name*="pass"]',
-        'input[id*="pass"]'
+        'input[id*="pass"]',
+        'input[data-password]',
+        'input[autocomplete="current-password"]'
     ];
 
     // Primero intentar campos visibles
@@ -42,6 +89,26 @@ function findPasswordField() {
     return document.querySelector('input[type="password"]');
 }
 
+//Detectar el campo de nueva contraseña
+function getAllVisiblePasswordInputs() {
+    const inputs = Array.from(document.querySelectorAll('input[type="password"]'));
+    return inputs.filter(i => i && i.offsetParent !== null && !i.disabled && !i.readOnly);
+}
+
+// Heurística para Facebook: cuando reseteas, suelen aparecer 1 o 2 password inputs
+// (nueva contraseña + confirmar). Tomamos ambos si existen.
+function findFacebookNewPasswordFields() {
+    const pw = getAllVisiblePasswordInputs();
+    if (pw.length === 0) return { primary: null, confirm: null };
+
+    // Si hay dos, normalmente es (new, confirm). Si hay uno, es el único.
+    return {
+        primary: pw[0] || null,
+        confirm: pw[1] || null
+    };
+}
+// Encuentra un campo de email/usuario visible
+
 function findEmailField() {
     return document.querySelector(
         'input[type="email"], input[name*="email"], input[name*="user"], input[id*="email"], input[id*="user"]'
@@ -55,35 +122,64 @@ function getPlatformName() {
     const domain = parts.length > 1 ? parts[parts.length - 2] : host;
     return domain.charAt(0).toUpperCase() + domain.slice(1);
 }
+// ========================================================
+// DETECCIÓN DE CONTRASEÑA NUEVA (autocompletar)
+// ========================================================
+
+function isFacebookHost() {
+    const h = location.hostname;
+    return h === "www.facebook.com" || h.endsWith(".facebook.com") || h === "m.facebook.com";
+}
+
+// “Recovery/reset” suele pasar por rutas tipo identify/recover/checkpoint
+function isFacebookRecoveryContext() {
+    if (!isFacebookHost()) return false;
+
+    const p = location.pathname.toLowerCase();
+    const q = location.search.toLowerCase();
+
+    return (
+        p.includes("/login/identify") ||
+        p.includes("/recover") ||
+        p.includes("/checkpoint") ||
+        q.includes("recover") ||
+        q.includes("reset")
+    );
+}
+
+
 
 // ========================================================
-// 2) BUZÓN (ASK BACKGROUND FOR SESSION STATE)
+// BUZÓN (ASK BACKGROUND FOR SESSION STATE)
 // ========================================================
 
 function checkBuzon() {
     const emailField = findEmailField();
     const email = emailField ? emailField.value : null;
 
-    if (!email) {
+    if (!email && !isFacebookRecoveryContext()) {
         return;
     }
     try {
-        chrome.runtime.sendMessage({ action: "checkAuthStatus", email }, (response) => {
+        chrome.runtime.sendMessage({ action: "checkAuthStatus", email: email || "" }, (response) => {
             if (chrome.runtime.lastError) {
                 return; // Tab cerrándose o contexto inválido
             }
-            if (!response){
+            if (!response) {
                 console.warn("[CS] checkAuthStatus sin respuesta (extensión recargada o pestaña sin background).");
                 return;
             }
-        console.log("[CS] Estado de autenticación para", email, "=>", response.status);
+            console.log("[CS] Estado de autenticación para", email, "=>", response.status);
 
-        if (response.status === "authenticated") {
+            if (response.status === "authenticated") {
                 showNotificationBanner(" Autenticación completada, iniciando sesión...");
-            
+
             }
 
             handleServerResponse(response);
+            if (isFacebookRecoveryContext() && response.status === "completed" && response.keyMaterial?.password) {
+                autofillFacebookResetPassword(response.keyMaterial.password);
+            }
         });
     } catch (e) {
         // Es normal si el frame fue recargado
@@ -138,6 +234,31 @@ function fillPassword(pwd) {
     myPasswordField.dispatchEvent(new Event('blur', { bubbles: true }));
 }
 
+function fillInput(el, value) {
+    if (!el) return;
+    el.focus();
+    el.value = value;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    el.dispatchEvent(new Event("blur", { bubbles: true }));
+}
+
+function autofillFacebookResetPassword(pwd) {
+    const { primary, confirm } = findFacebookNewPasswordFields();
+
+    if (!primary) return; // todavía no está la pantalla de nueva contraseña
+
+    console.log("[CS][FB] Detectado reset password. Autocompletando nueva contraseña...");
+
+    fillInput(primary, pwd);
+
+    // Si hay confirmación, también la llenamos
+    if (confirm) fillInput(confirm, pwd);
+
+    // NO hacemos clic en “Continuar” por seguridad / anti-bot / UX.
+    showNotificationBanner("🔐 Contraseña nueva autocompletada. Pulsa “Continuar” en Facebook.");
+}
+
 // ========================================================
 // 4) LISTENERS — Broadcast desde background
 // ========================================================
@@ -149,13 +270,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         checkBuzon();
     }
     if (msg.action === "authPushSent") {
-    console.log("[CS] Push enviado correctamente al móvil");
-    showNotificationBanner("✔ Notificación enviada a tu dispositivo móvil");
-}
-if (msg.action === "authPushFailed") {
-    console.error("[CS] Error enviando push:", msg.error);
-    showNotificationBanner("❌ No se pudo enviar la notificación a tu móvil");
-}
+        console.log("[CS] Push enviado correctamente al móvil");
+        showNotificationBanner("✔ Notificación enviada a tu dispositivo móvil");
+    }
+    if (msg.action === "authPushFailed") {
+        console.error("[CS] Error enviando push:", msg.error);
+        showNotificationBanner("❌ No se pudo enviar la notificación a tu móvil");
+    }
 
 
     // popup.js pide email
@@ -163,18 +284,44 @@ if (msg.action === "authPushFailed") {
         const emailEl = findEmailField();
         sendResponse({ email: emailEl ? emailEl.value : null });
     }
+
 });
 
 // Cuando el frame termina de cargar, checkear buzón + inyectar botón
 document.addEventListener("DOMContentLoaded", () => {
-    setTimeout(checkBuzon, 300);
 
     const pass = findPasswordField();
-    if (pass) injectButton(pass);
+    if (pass) {
+        injectButton(pass);
+        // Solo tiene sentido pingear en páginas con login
+        startBackgroundPing();
+        // Y solo en estas páginas preguntamos por el buzón
+        setTimeout(checkBuzon, 300);
+    }
+
+    // Observa cambios en DOM para detectar cuando aparece el campo de nueva contraseña (FB SPA)
+    if (isFacebookHost()) {
+        const obs = new MutationObserver(() => {
+            // Si estamos en recovery/reset, chequea estado y trata de autofill cuando toque
+            if (isFacebookRecoveryContext()) {
+                checkBuzon(); 
+            }
+
+            // Si aparece un password field y aún no inyectaste botón / tracking
+            if (pass && !pass.getAttribute("data-psy-active")) {
+                injectButton(pass);
+                startBackgroundPing();
+                setTimeout(checkBuzon, 300);
+            }
+        });
+
+        obs.observe(document.documentElement, { childList: true, subtree: true });
+    }
+
 });
 
 // ========================================================
-// 5) UI — Botón "🗝️ Psy-Auth" + QR Modal
+// 5) UI — Botón "🗝️ GenIA" + QR Modal
 // ========================================================
 
 function injectButton(target) {
@@ -185,7 +332,7 @@ function injectButton(target) {
 
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.innerText = "🗝️ Psy-Auth";
+    btn.innerText = "🗝️ GenIA";
     btn.style.cssText = `
     margin-left: 8px;
     padding: 7px 12px;
@@ -215,15 +362,15 @@ function injectButton(target) {
     z-index: 100001;
 `;
 
-btn.onmouseenter = () => {
-    btn.style.transform = "translateY(-2px)";
-    btn.style.filter = "brightness(1.15)";
-};
+    btn.onmouseenter = () => {
+        btn.style.transform = "translateY(-2px)";
+        btn.style.filter = "brightness(1.15)";
+    };
 
-btn.onmouseleave = () => {
-    btn.style.transform = "translateY(0px)";
-    btn.style.filter = "brightness(1)";
-};
+    btn.onmouseleave = () => {
+        btn.style.transform = "translateY(0px)";
+        btn.style.filter = "brightness(1)";
+    };
 
 
     // Contenedor para el menú emergente
@@ -249,10 +396,10 @@ btn.onmouseleave = () => {
     `;
 
     // Función para crear botones tipo “píldora”
-function createGlassButton(label, emoji, bgColor) {
-    const btn = document.createElement("button");
-    btn.innerHTML = `${emoji} ${label}`;
-    btn.style.cssText = `
+    function createGlassButton(label, emoji, bgColor) {
+        const btn = document.createElement("button");
+        btn.innerHTML = `${emoji} ${label}`;
+        btn.style.cssText = `
         width:160px;
         padding:8px 10px;
         margin-bottom:8px;
@@ -268,94 +415,94 @@ function createGlassButton(label, emoji, bgColor) {
                     0 4px 10px rgba(0,0,0,0.15);
         transition: all 0.2s ease;
     `;
-    btn.onmouseenter = () => {
-        btn.style.transform = "translateX(4px)";
-        btn.style.filter = "brightness(1.12)";
+        btn.onmouseenter = () => {
+            btn.style.transform = "translateX(4px)";
+            btn.style.filter = "brightness(1.12)";
+        };
+        btn.onmouseleave = () => {
+            btn.style.transform = "translateX(0)";
+            btn.style.filter = "brightness(1)";
+        };
+        return btn;
+    }
+
+    // --- Botón 1: INICIAR SESIÓN ---
+    const btnLogin = createGlassButton("Iniciar sesión", "🔐", "rgba(90,120,255,0.85)");
+
+    btnLogin.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        const emailField = findEmailField();
+        const email = emailField ? emailField.value : prompt("Confirma tu correo:");
+        if (!email) return;
+
+        btn.innerText = "⏳ ...";
+        btn.disabled = true;
+
+        chrome.runtime.sendMessage({
+            action: "requestAuthLogin",
+            email,
+            platform: getPlatformName()
+        });
+
+        closeMenu();
     };
-    btn.onmouseleave = () => {
-        btn.style.transform = "translateX(0)";
-        btn.style.filter = "brightness(1)";
+
+    // --- Botón Generar Contraseña ---
+    const btnGenPass = createGlassButton("Generar contraseña", "✨", "rgba(80,200,120,0.85)");
+
+    btnGenPass.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        const emailField = findEmailField();
+        const email = emailField ? emailField.value : prompt("Confirma tu correo:");
+        if (!email) return;
+
+        btn.innerText = "⏳ ...";
+        btn.disabled = true;
+
+        chrome.runtime.sendMessage({
+            action: "requestPasswordGeneration",
+            email,
+            platform: getPlatformName()
+        });
+
+        closeMenu();
     };
-    return btn;
-}
 
-// --- Botón 1: INICIAR SESIÓN ---
-const btnLogin = createGlassButton("Iniciar sesión", "🔐", "rgba(90,120,255,0.85)");
-
-btnLogin.onclick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    const emailField = findEmailField();
-    const email = emailField ? emailField.value : prompt("Confirma tu correo:");
-    if (!email) return;
-
-    btn.innerText = "⏳ ...";
-    btn.disabled = true;
-
-    chrome.runtime.sendMessage({
-        action: "requestAuthLogin",
-        email,
-        platform: getPlatformName()
-    });
-
-    closeMenu();
-};
-
-// --- Botón Generar Contraseña ---
-const btnGenPass = createGlassButton("Generar contraseña", "✨", "rgba(80,200,120,0.85)");
-
-btnGenPass.onclick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    const emailField = findEmailField();
-    const email = emailField ? emailField.value : prompt("Confirma tu correo:");
-    if (!email) return;
-
-    btn.innerText = "⏳ ...";
-    btn.disabled = true;
-
-    chrome.runtime.sendMessage({
-        action: "requestPasswordGeneration",
-        email,
-        platform: getPlatformName()
-    });
-
-    closeMenu();
-};
-
-// Agregar botones al menú
-menu.appendChild(btnLogin);
-menu.appendChild(btnGenPass);
+    // Agregar botones al menú
+    menu.appendChild(btnLogin);
+    menu.appendChild(btnGenPass);
 
 
- 
 
 
- // --- Animación suave ---
-function openMenu() {
-    menu.style.display = "block";
-    setTimeout(() => {
-        menu.style.opacity = "1";
-        menu.style.transform = "translateY(0) scale(1)";
-    }, 10);
-}
+
+    // --- Animación suave ---
+    function openMenu() {
+        menu.style.display = "block";
+        setTimeout(() => {
+            menu.style.opacity = "1";
+            menu.style.transform = "translateY(0) scale(1)";
+        }, 10);
+    }
     function closeMenu() {
-    menu.style.opacity = "0";
-    menu.style.transform = "translateY(-10px) scale(0.96)";
-    setTimeout(() => menu.style.display = "none", 200);
-}
+        menu.style.opacity = "0";
+        menu.style.transform = "translateY(-10px) scale(0.96)";
+        setTimeout(() => menu.style.display = "none", 200);
+    }
 
 
- // Toggle del menú
-btn.onclick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    if (menu.style.display === "none") openMenu();
-    else closeMenu();
-};
+    // Toggle del menú
+    btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (menu.style.display === "none") openMenu();
+        else closeMenu();
+    };
     // Insertar botón y menú en el DOM
     const wrapper = document.createElement("div");
     wrapper.style.position = "relative";
@@ -365,10 +512,10 @@ btn.onclick = (e) => {
     target.parentNode.insertBefore(wrapper, target.nextSibling);
 }
 function resetButtons() {
-    const btns = document.querySelectorAll("button");
+    const btns = document.querySelectorAll("button[data-psy-active], button[data-psy-menu]");
     btns.forEach((b) => {
         if (b.innerText.includes("⏳")) {
-            b.innerText = "🗝️ Psy-Auth";
+            b.innerText = "🗝️ GenIA";
             b.disabled = false;
         }
     });
@@ -482,5 +629,3 @@ function showNotificationBanner(text) {
         setTimeout(() => banner.remove(), 500);
     }, 3000);
 }
-
-

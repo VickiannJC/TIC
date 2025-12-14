@@ -19,6 +19,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+DEBUG_LOGS = os.environ.get("GEN_SERVER_DEBUG", "false").lower() == "true"
+
 # Secreto HMAC compartido con server_analysis 
 GEN_HMAC_SECRET = os.environ.get("GEN_HMAC_SECRET")
 if not GEN_HMAC_SECRET:
@@ -34,8 +36,8 @@ KEY_MANAGER_API_KEY = os.environ.get("KEY_MANAGER_API_KEY")
 if not KEY_MANAGER_API_KEY:
     raise RuntimeError("KEY_MANAGER_API_KEY no definido en variables de entorno.")
 
-# Modo debug controlado por entorno (NUNCA activar en producción)
-DEBUG_LOGS = os.environ.get("GEN_SERVER_DEBUG", "false").lower() == "true"
+
+
 
 
 # ===================
@@ -43,7 +45,7 @@ DEBUG_LOGS = os.environ.get("GEN_SERVER_DEBUG", "false").lower() == "true"
 # ===================
 
 class PsyProfile(BaseModel):
-    predicted_scores: Dict[str, float] = Field(..., description="Big Five scores")
+    predicted_scores: Dict[str, float] = Field(default_factory = dict, description="Big Five scores")
     unique_profile_description: str
 
 
@@ -67,28 +69,36 @@ app = FastAPI(title="Psy Password Generation Server", version="1.0.0")
 #   FUNCIONES AUXILIARES
 # ======================================================
 
+def canonical_json(obj: Any) -> bytes:
+    return json.dumps(
+        obj,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
 def verify_payload_signature(body: Dict[str, Any], header_sig: Optional[str]) -> None:
     """
     Verifica que el payload JSON ha sido firmado por server_analysis
     usando HMAC-SHA256 con GEN_HMAC_SECRET.
 
     """
-    print("DEBUG Inside verify_payload_signature")
-    print("DEBUG body:", body)
-    print("DEBUG header_sig:", header_sig)
+
     if not header_sig:
         raise HTTPException(status_code=401, detail="Missing X-Payload-Signature header")
 
-    body_canon = json.dumps(body, sort_keys=True).encode("utf-8")
-    print("DEBUG body_canon:", body_canon)
+    body_canon = canonical_json(body)
+
     expected_sig = hmac.new(
         GEN_HMAC_SECRET.encode("utf-8"),
         body_canon,
         hashlib.sha256
     ).hexdigest()
 
-   
-    print("DEBUG expected_sig:", expected_sig)
+
+    if DEBUG_LOGS:
+        print("DEBUG Expected signature:", expected_sig)
+        print("DEBUG Header signature:", header_sig)
     if not hmac.compare_digest(expected_sig, header_sig):
         print("❌ Firma inválida")
         raise HTTPException(status_code=401, detail="Invalid payload signature")
@@ -149,7 +159,7 @@ def send_to_key_manager(payload: dict) -> None:
         # Respuesta controlada hacia server_analysis
         raise HTTPException(
             status_code=resp.status_code,
-            detail=f"Key-Manager error: {resp.text[:200]}"
+            detail=f"Key-Manager error: returned (status{resp.status_code})"
         )
 
 
@@ -167,13 +177,11 @@ async def generate_password(request: Request):
 
     try:
         body = await request.json()
-        print("DEBUG Body recibido:", body)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
 
     # Verificar firma HMAC del payload
     header_sig = request.headers.get("X-Payload-Signature")
-    print("DEBUG Firma recibida:", header_sig)
     verify_payload_signature(body, header_sig)
 
     #  Validar estructura con Pydantic
@@ -190,6 +198,8 @@ async def generate_password(request: Request):
     if DEBUG_LOGS:
         # request_id y platform no son secretos
         print(f"[GEN-SERVER] request_id={data.request_id} platform={platform}")
+        print(f"[GEN-SERVER] user_id={data.user_id} email={data.email}")
+        print(f"[GEN-SERVER] PsyProfile scores: {data.psy_profile.predicted_scores}")
 
     # 4) Extraer valores numéricos y cadena de usuario
     valores, cadena_usuario = extract_valores_and_cadena(
@@ -208,11 +218,6 @@ async def generate_password(request: Request):
         "redes_sociales_con_tags.json",
         platform
     )
-
-    print("PLATAFORMA RECIBIDA:", platform)
-    print("TAG OBTENIDO:", tag)
-
-
     # Calcular desplazamiento
     desplazamiento = procesador_numerico_password.calcular_desplazamiento(
         valores,
@@ -262,6 +267,9 @@ async def generate_password(request: Request):
 
     # Enviar al Key-Manager (HTTPS + API KEY)
     send_to_key_manager(km_payload)
+
+    if DEBUG_LOGS:
+        print(f"✔ Datos enviados al Key-Manager para request_id={data.request_id}")
 
     # Respuesta al server_analysis 
     return JSONResponse(

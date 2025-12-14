@@ -17,9 +17,10 @@
     {
       "resources": [
         "qr_page.html",
-        "qr_page.js"
+        "qr_page.js",
+        "km_client.js"
       ],
-      "matches": ["<all_urls>"]
+      "matches": ["*://*.facebook.com/*"]
     }
   ],
   "permissions": [

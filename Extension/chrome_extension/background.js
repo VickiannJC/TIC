@@ -2,11 +2,13 @@
 // CONFIG
 // ========================================================
 
-const SERVER_BASE_URL = 'https://life-creator-smithsonian-output.trycloudflare.com';
+const SERVER_BASE_URL = 'https://refurbished-automated-encryption-consult.trycloudflare.com';
 const EXT_CLIENT_KEY = "9afe2270278c6647dc54094103a7e7605d61f9b4c0642baf59559453d41c4c94";
 
+const KM_URL = "http://127.0.0.1:8200"; 
+
 // Poll each interval to check server state (QR + login)
-const POLLING_INTERVAL = 3000;
+const POLLING_INTERVAL = 10000; //10 segundos
 
 
 
@@ -14,7 +16,7 @@ const POLLING_INTERVAL = 3000;
 const QR_REFRESH_INTERVAL = 60000;
 
 // Login timeouts
-const LOGIN_MAX_TIMEOUT = 350000;
+const LOGIN_MAX_TIMEOUT = 180000;
 
 // ========================================================
 // MEMORIA DEL TAB (Buzón por email)
@@ -81,6 +83,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     const origin = sender.tab ? new URL(sender.tab.url).origin : null;
 
+    if (request.action === "ping") {
+        sendResponse({ ok: true });
+        return; // importar: indicar que ya respondimos
+    }
     // --------------------------------------------
     // REGISTRO (BOTÓN “Registrar Móvil” DEL POPUP)
     // --------------------------------------------
@@ -282,7 +288,7 @@ async function generateQrAndSend(mainTabId, qrTabId) {
     console.log("[BG] Generando QR...");
 
     try {
-        const resp = await fetch(`${SERVER_BASE_URL}/generar-qr-sesion`, {
+        const resp = await fetch(`${SERVER_BASE_URL}/generar-qr-session`, {
 
             method: "POST",
             headers: {
@@ -401,7 +407,7 @@ async function initiateLogin(email, platform, tabId) {
         const data = await resp.json();
 
 
-        if (!resp.ok) {
+        if (!resp.ok || !data.ok) {
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 chrome.tabs.sendMessage(tabs[0].id, {
                     action: "authPushFailed",
@@ -414,11 +420,11 @@ async function initiateLogin(email, platform, tabId) {
         // Notificación enviada correctamente
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             chrome.tabs.sendMessage(tabs[0].id, {
-                action: "authPushSent"
+                action: "authPushSent",
             });
         });
 
-        startLoginPolling(email, tabId);
+        startLoginPolling(email,platform, tabId);
 
     } catch (err) {
         console.error("[BG] Error inicio login:", err);
@@ -461,7 +467,7 @@ async function initiateGeneration(mainTabId, email, platform) {
 }
 
 
-function startLoginPolling(email, tabId) {
+function startLoginPolling(email,platform, tabId) {
     const startTime = Date.now();
 
     const interval = setInterval(async () => {
@@ -514,14 +520,65 @@ function startLoginPolling(email, tabId) {
             if (data.status === "authenticated") {
                 clearInterval(interval);
 
-                updateSessionState(tabId, {
-                    status: "completed",
-                    keyMaterial: { password: data.token } // token = password temporal
-                });
+                console.log("🔐 Usuario autenticado. Preparando canal seguro con el KM...");
 
+                try {
+                    // Inicializar KMClient (usuario + plugin)
+                    await KMClient.init({
+                        kmBaseUrl: KM_URL,
+                        userId: email,                 // usuario autenticado
+                        pluginId: "BROWSER_PLUGIN_1"   // ID fijo o persistente
+                    });
+
+                    // Asegurar handshake (si ya existe no repite)
+                    await KMClient.ensureHandshake();
+                    console.log("🤝 Handshake completado. Solicitando contraseña al KM...");
+
+                    // Solicitar contraseña protegida con envelope
+                    const resp = await fetch(`${KM_URL}/get_password_enveloped`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            user_id: email,
+                            plugin_id: "BROWSER_PLUGIN_1",
+                            platform: platform
+                        })
+                    });
+
+                    if (!resp.ok) {
+                        const txt = await resp.text();
+                        throw new Error(`KM error: ${txt}`);
+                    }
+
+                    const dataKm = await resp.json();
+                    const encrypted_password = dataKm.encrypted_password;
+
+                    console.log("📩 Recibido encrypted_password desde KM:", encrypted_password);
+
+                    //  Descifrar con enclave local (AES-GCM con channelKey)
+                    const pwBytes = await KMClient.envelopeDecrypt(encrypted_password);
+                    const password = new TextDecoder().decode(pwBytes);
+
+                    console.log("🔓 Contraseña real descifrada:", password);
+
+                    //  Enviar contraseña real al content script
+                    updateSessionState(tabId, {
+                        status: "completed",
+                        keyMaterial: { password }
+                    });
+
+                } catch (err) {
+                    console.error("❌ Error obteniendo contraseña desde KM:", err);
+                    updateSessionState(tabId, {
+                        status: "error",
+                        message: "No se pudo obtener la contraseña desde el KM"
+                    });
+                }
 
                 return;
             }
+
+
 
             if (data.status === "denied") {
                 clearInterval(interval);

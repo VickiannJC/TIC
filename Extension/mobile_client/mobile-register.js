@@ -3,7 +3,7 @@
  * y enviarla al servidor Node.js.
  */
 // URL base de tu servidor Node.js
-const SERVER_BASE_URL = 'https://life-creator-smithsonian-output.trycloudflare.com';
+const SERVER_BASE_URL = 'https://refurbished-automated-encryption-consult.trycloudflare.com';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // --- FIX: evitar doble ejecución si el usuario abre varias veces ---
@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 2. Registrar Service Worker -> archivo sw.js
         statusMessage.textContent = 'Registrando Service Worker...';
         // NOTA: El path debe ser relativo a la raíz del cliente móvil
-        const registration = await navigator.serviceWorker.register(`${location.origin}/mobile_client/sw2.js`);
+        const registration = await navigator.serviceWorker.register(`${location.origin}/mobile_client/sw3.js`);
 
 
         // 3. Solicitar permisos para recibir las notificaciones push 
@@ -123,7 +123,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     continueUrl: data.continueUrl,
                     sessionId: data.sessionId,
                     challengeId: data.challengeId, 
-                    token: data.token
+                    session_token: data.session_token
                 })
             });
 

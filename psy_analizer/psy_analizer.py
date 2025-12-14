@@ -6,7 +6,6 @@ import uuid
 import monitorear_proceso
 import tensorflow.lite as tflite
 import numpy as np
-import pandas as pd
 import guardar_analisis
 import seguridad
 import cryptography
@@ -46,18 +45,19 @@ class PsychologicalAnalyzer:
             'Openness': 'Apertura'
         }
 
-    def _get_advanced_description(self, scores_df):
+    def _get_advanced_description(self, scores: dict):
         """
         Genera la descripción psicológica para el usuario
         """
-        row = scores_df.iloc[0]
         descriptions_list = []
         thresholds = {
-            (4.5, 5.0): "Alto en", (3.8, 4.49): "Moderadamente alto en",
-            (2.6, 3.79): "Moderado en", (1.8, 2.59): "Moderadamente bajo en",
+            (4.5, 5.0): "Alto en",
+            (3.8, 4.49): "Moderadamente alto en",
+            (2.6, 3.79): "Moderado en",
+            (1.8, 2.59): "Moderadamente bajo en",
             (1.0, 1.79): "Bajo en"
         }
-        for trait, score in row.items():
+        for trait, score in scores.items():
             for (low, high), prefix in thresholds.items():
                 # Comparación del puntaje con el umbral establecido
                 if low <= score <= high:
@@ -65,8 +65,8 @@ class PsychologicalAnalyzer:
                     descriptions_list.append(f"{prefix} {word}")
                     break
         #Identificación de rasgo dominante y área de contraste
-        highest_trait = row.idxmax()
-        lowest_trait = row.idxmin()
+        highest_trait = max(scores, key=scores.get)
+        lowest_trait = min(scores, key=scores.get)
         highest_word = np.random.choice(self.keyword_map[highest_trait])
         lowest_word = np.random.choice(self.keyword_map[lowest_trait])
         descriptions_list.append(f"Rasgo dominante: {self.trait_translation[highest_trait]} ({highest_word})")
@@ -124,14 +124,7 @@ class PsychologicalAnalyzer:
         # ==============================================================================
 
         # Realiza el análisis psicológico basado en las respuestas del usuario
-        print("\n" + "="*50)
-        print("📢 [DEBUG] INICIO DEL ANÁLISIS")
-        print(f"📥 Datos recibidos de Node.js:")
-        print(f"   - ID Usuario: {id_usuario}")
-        print(f"   - Respuestas: {user_answers}")
-        print("="*50 + "\n")
-
-
+        
         if len(user_answers) != 10:
             print("❌ [DEBUG] Error: El array no tiene 10 respuestas.")
             return {"error": "Se requiere un arreglo de exactamente 10 respuestas."}
@@ -153,19 +146,12 @@ class PsychologicalAnalyzer:
         
         #DEBUG
         valores_lista = predicted_scores.tolist() 
-        # Usa flush=True para obligar a Python a imprimir AHORA MISMO
-        print(f"🧠 [DEBUG] Resultados crudos: {valores_lista}", flush=True)
         
         trait_names = ['Extraversion', 'Agreeableness', 'Conscientiousness', 'Neuroticism', 'Openness']
-        scores_df = pd.DataFrame([predicted_scores], columns=trait_names)
-
+        scores = {name: float(score) for name, score in zip(trait_names, predicted_scores)}
         # Recibe ambos valores desde la función de descripción
-        final_description_str, final_description_list = self._get_advanced_description(scores_df)
-        # Intenta imprimir codificando y decodificando para ignorar errores de consola
-        try:
-            print(f"📝 [DEBUG] Perfil generado: {final_description_str.encode('utf-8', 'replace').decode('utf-8')}", flush=True)
-        except Exception as e:
-            print(f"❌ No se pudo imprimir el perfil por error de codificación: {e}")
+        final_description_str, final_description_list = self._get_advanced_description(scores)
+       
 
         scores = {name: float(score) for name, score in zip(trait_names, predicted_scores)}
         psy_data = {
@@ -188,16 +174,20 @@ class PsychologicalAnalyzer:
             "metadata": nueva_metadata
         }
         
-
-            # --- DEBUG: VER LO QUE SE VA A GUARDAR EN MONGO ---
-        print("\n💾 [DEBUG] Documento listo para MongoDB:")
-        print(doc) 
-        print("="*50 + "\n")
-        
         guardar_analisis.guardar_analisis_mongo(doc)
-        
-        print(" [DEBUG] Proceso finalizado con éxito.")
-        return { "stored ": True }
+        DEBUG_LOGS = os.environ.get("GEN_SERVER_DEBUG", "false").lower() == "true"
+        if DEBUG_LOGS:
+            print("📢 [DEBUG] INICIO DEL ANÁLISIS")
+            print(f"📥 Datos recibidos de Node.js:")
+            print(f"   - ID Usuario: {id_usuario}")
+            print(f"   - Respuestas: {user_answers}")
+            print("="*50 + "\n")
+            print(f"🧠 [DEBUG] Resultados crudos: {valores_lista}", flush=True)
+            print(f"✔ Análisis guardado en MongoDB para usuario ID HMAC: {id_hmac[:10]}...")
+            print("✔ Perfil psicológico generado:")
+            print(final_description_str)
+
+        return { "stored": True }
         
         #return psy_data
     

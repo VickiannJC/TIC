@@ -47,7 +47,7 @@ const TemporalSchema = new mongoose.Schema({
         type: Date,
         default: Date.now,
         // TTL global (por seguridad, token efímero):
-        //expires: 600 // 10 minutos (ajustable)
+        expires: 3600 // 1 hora
     }
 });
 
