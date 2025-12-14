@@ -41,7 +41,7 @@ const EXT_CLIENT_KEY = process.env.EXT_CLIENT_KEY; // clave compartida con la ex
 const BIOMETRIA_BASE_URL = process.env.BIOMETRIA_BASE_URL;
 const BIOMETRIA_API_KEY = process.env.BIOMETRIA_API_KEY;
 const BIOMETRIA_JWT_SECRET = process.env.BIOMETRIA_JWT_SECRET;
-const SERVER_BASE_URL = 'https://refurbished-automated-encryption-consult.trycloudflare.com';
+const SERVER_BASE_URL = 'https://knit-newport-cdt-pan.trycloudflare.com';
 
 const ANALYSIS_BASE_URL = process.env.ANALYSIS_BASE_URL;
 

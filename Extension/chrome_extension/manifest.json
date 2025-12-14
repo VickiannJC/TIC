@@ -28,7 +28,8 @@
     "activeTab",
     "scripting",
     "tabs",
-    "webNavigation"
+    "webNavigation",
+    "notifications"
   ],
 
   "host_permissions": [

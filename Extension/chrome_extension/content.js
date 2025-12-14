@@ -285,6 +285,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ email: emailEl ? emailEl.value : null });
     }
 
+    if (msg.action === "showPostGenerateInstructions") {
+        showNotificationBanner(
+            `✅ Contraseña generada para ${msg.platform}.\n` +
+            `Ahora haz clic en “¿Olvidaste tu contraseña?” y sigue el proceso.\n` +
+            `Cuando Facebook muestre “Nueva contraseña”, la extensión la llenará automáticamente.`
+        );
+    }
+
+
 });
 
 // Cuando el frame termina de cargar, checkear buzón + inyectar botón
@@ -304,7 +313,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const obs = new MutationObserver(() => {
             // Si estamos en recovery/reset, chequea estado y trata de autofill cuando toque
             if (isFacebookRecoveryContext()) {
-                checkBuzon(); 
+                checkBuzon();
             }
 
             // Si aparece un password field y aún no inyectaste botón / tracking

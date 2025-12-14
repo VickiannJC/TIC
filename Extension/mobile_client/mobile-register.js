@@ -3,7 +3,7 @@
  * y enviarla al servidor Node.js.
  */
 // URL base de tu servidor Node.js
-const SERVER_BASE_URL = 'https://refurbished-automated-encryption-consult.trycloudflare.com';
+const SERVER_BASE_URL = 'https://knit-newport-cdt-pan.trycloudflare.com';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // --- FIX: evitar doble ejecución si el usuario abre varias veces ---

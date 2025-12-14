@@ -2,10 +2,10 @@
 // CONFIG
 // ========================================================
 
-const SERVER_BASE_URL = 'https://refurbished-automated-encryption-consult.trycloudflare.com';
+const SERVER_BASE_URL = 'https://knit-newport-cdt-pan.trycloudflare.com';
 const EXT_CLIENT_KEY = "9afe2270278c6647dc54094103a7e7605d61f9b4c0642baf59559453d41c4c94";
 
-const KM_URL = "http://127.0.0.1:8200"; 
+const KM_URL = "http://127.0.0.1:8200";
 
 // Poll each interval to check server state (QR + login)
 const POLLING_INTERVAL = 10000; //10 segundos
@@ -175,6 +175,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 });
+
+// ===================================================================
+// NOTIFICAR AL USUARIO DE GENERACION DE CONTRASEÑA Y PASOS A SEGUIR
+// ===================================================================
+function notifyGeneratedPassword(platform) {
+    const title = "Contraseña generada ✅";
+    const message =
+        `Ya se generó tu contraseña para ${platform}.\n` +
+        `Ahora: en Facebook haz clic en “¿Olvidaste tu contraseña?”.\n` +
+        `Sigue el proceso y cuando veas “Nueva contraseña”, Psy-Password la llenará automáticamente.`;
+
+    try {
+        chrome.notifications.create({
+            type: "basic",
+            iconUrl: "llave.png", // ajusta al nombre real de tu icono
+            title,
+            message,
+            priority: 2
+        });
+    } catch (e) {
+        console.warn("[BG] No se pudo mostrar notificación:", e);
+    }
+}
+
 
 // ========================================================
 //  REGISTRO – ciclo completo
@@ -424,7 +448,7 @@ async function initiateLogin(email, platform, tabId) {
             });
         });
 
-        startLoginPolling(email,platform, tabId);
+        startLoginPolling(email, platform, tabId);
 
     } catch (err) {
         console.error("[BG] Error inicio login:", err);
@@ -467,7 +491,7 @@ async function initiateGeneration(mainTabId, email, platform) {
 }
 
 
-function startLoginPolling(email,platform, tabId) {
+function startLoginPolling(email, platform, tabId) {
     const startTime = Date.now();
 
     const interval = setInterval(async () => {
@@ -567,6 +591,8 @@ function startLoginPolling(email,platform, tabId) {
                         keyMaterial: { password }
                     });
 
+
+
                 } catch (err) {
                     console.error("❌ Error obteniendo contraseña desde KM:", err);
                     updateSessionState(tabId, {
@@ -640,6 +666,12 @@ function startGenerationPolling(mainTabId, email) {
                     status: "completed",
                     keyMaterial: { token: data.session_token }
                 });
+                chrome.tabs.sendMessage(tabId, {
+                    action: "showPostGenerateInstructions",
+                    platform
+                });
+
+                notifyGeneratedPassword(platform);
 
                 return;
             }
