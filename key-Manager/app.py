@@ -231,6 +231,14 @@ class PluginKeyAuthRequest(BaseModel):
 
 @app.post("/auth_plugin_key")
 async def auth_plugin_key(req: PluginKeyAuthRequest):
+    payload = {
+        "user_id": req.user_id,
+        "plugin_id": req.plugin_id,
+        "public_key_b64": req.public_key_b64
+    }
+    if not verify_reg_token(payload, req.reg_token):
+        raise HTTPException(status_code=401, detail="Invalid plugin registration token")
+
     await store_plugin_public_key(
         user_id=req.user_id,
         plugin_id=req.plugin_id,

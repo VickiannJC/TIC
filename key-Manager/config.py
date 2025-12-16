@@ -27,7 +27,9 @@ K_DB_PASS = derive_kdb(MASTER_SECRET_PASS, KDB_SALT_PASS)
 
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL")
 
-
+# ===== Configuración de seguridad para plugin ======
 KEY_MANAGER_ALLOWED_CLIENTS = os.getenv("KM_ALLOWED_CLIENTS", "").split(",")
-
+KM_PLUGIN_REG_SECRET = os.environ.get("KM_PLUGIN_REG_SECRET")
+if not KM_PLUGIN_REG_SECRET:
+    raise RuntimeError("KM_PLUGIN_REG_SECRET no definido en variables de entorno.")
 
