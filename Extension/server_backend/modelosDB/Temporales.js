@@ -29,7 +29,7 @@ const TemporalSchema = new mongoose.Schema({
     // used: token ya entregado a la extensión
     status: {
         type: String,
-        enum: ['pending', 'confirmed', 'denied', 'biometria_ok', 'biometria_failed', 'used'],
+        enum: ['pending', 'confirmed', 'denied', 'biometria_ok', 'biometria_failed', 'used', 'km_pending'],
         default: 'pending'
     },
     
@@ -43,12 +43,18 @@ const TemporalSchema = new mongoose.Schema({
     userBiometriaId: { type: String, default: null },
     biometriaJwt: { type: String, default: null },
     cadenaValores: { type: String, default: null }, // raw_responses para registro
+    meta: { type: Object, default: {} },
     createdAt: {
         type: Date,
         default: Date.now,
-        // TTL global (por seguridad, token efímero):
-        expires: 3600 // 1 hora
+        expires: 3600 // 1 hora //600- 10 minutos
+        
     }
 });
+
+TemporalSchema.index(
+    { email: 1, action: 1, status: 1 },
+    { background: true }
+);
 
 module.exports = mongoose.model('Temporal', TemporalSchema);

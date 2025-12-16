@@ -22,4 +22,17 @@ uvicorn server_analysis:app --host 0.0.0.0 --port 8000
 uvicorn server_analysis:app --reload
 
 
+MONGO ATLAS - ALMACENAR CONTRASEÑAS
+clusterGenIA
+usuario: psy-password
+password: pSyG3nIa25$
+python -m pip install "pymongo[srv]"
+Python:
+mongodb+srv://psy-password:pSyG3nIa25$@cluster-genia.e5kwukz.mongodb.net/?appName=cluster-GenIA
+
+Node.js:
+mongodb+srv://psy-password:pSyG3nIa25$@cluster-genia.e5kwukz.mongodb.net/?appName=cluster-GenIA
+
+
+
 

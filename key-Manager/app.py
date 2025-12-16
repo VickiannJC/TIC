@@ -10,11 +10,12 @@ from cryptography.hazmat.primitives import serialization
 from km_crypto.aes_gcm import encrypt_with_kdb
 from services import password_generation
 from services.plugin_handshake_service import (get_or_create_server_private_key, store_plugin_public_key, load_plugin_public_key)
-from km_crypto.plugin_channel_crypto import envelope_decrypt, envelope_encrypt, derive_shared_channel_key
+from km_crypto.plugin_channel_crypto import envelope_decrypt, envelope_encrypt, derive_shared_channel_key, verify_request_signature
 from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
 import uuid, os, json, base64
+import hmac, hashlib
 from config import K_DB_PASS
 
 from dotenv import load_dotenv
@@ -24,6 +25,22 @@ load_dotenv()
 app = FastAPI(title="Key Manager Secure API")
 
 API_KEY = os.environ["KEY_MANAGER_API_KEY"]
+KM_PLUGIN_REG_SECRET = os.environ.get("KM_PLUGIN_REG_SECRET")
+if not KM_PLUGIN_REG_SECRET:
+    raise RuntimeError("KM_PLUGIN_REG_SECRET no definido en variables de entorno.")
+
+def canonical_json(obj: dict) -> str:
+    # sort_keys y separadores sin espacios para que sea estable
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+def verify_reg_token(payload: dict, reg_token: str) -> bool:
+    msg = canonical_json(payload).encode("utf-8")
+    expected = hmac.new(
+        KM_PLUGIN_REG_SECRET.encode("utf-8"),
+        msg,
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, reg_token)
 
 @app.post("/store_encrypted_item")
 async def store_encrypted_item(req: StoreEncryptedItemRequest):
@@ -209,6 +226,7 @@ class PluginKeyAuthRequest(BaseModel):
     user_id: str
     plugin_id: str
     public_key_b64: str
+    reg_token: str
 
 
 @app.post("/auth_plugin_key")

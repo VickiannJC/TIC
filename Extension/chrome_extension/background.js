@@ -425,28 +425,26 @@ async function initiateLogin(email, platform, tabId) {
                 "Content-Type": "application/json",
                 "X-Client-Key": EXT_CLIENT_KEY
             },
-            body: JSON.stringify({ email, platform })
+            body: JSON.stringify({ email, platform, tabId })
         });
 
         const data = await resp.json();
 
 
-        if (!resp.ok || !data.ok) {
-            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                chrome.tabs.sendMessage(tabs[0].id, {
+        if (!resp.ok) {
+            try {
+                chrome.tabs.sendMessage(tabId, {
                     action: "authPushFailed",
                     error: data.error || "Error enviando push"
                 });
-            });
+            } catch (e) { }
             return;
         }
 
         // Notificación enviada correctamente
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            chrome.tabs.sendMessage(tabs[0].id, {
-                action: "authPushSent",
-            });
-        });
+        try {
+            chrome.tabs.sendMessage(tabId, { action: "authPushSent" });
+        } catch (e) { }
 
         startLoginPolling(email, platform, tabId);
 
@@ -456,12 +454,9 @@ async function initiateLogin(email, platform, tabId) {
         if (s?.tabId) {
             updateSessionState(s.tabId, { status: "error", error: err.message });
         }
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            chrome.tabs.sendMessage(tabs[0].id, {
-                action: "authPushFailed",
-                error: err.message
-            });
-        });
+        try {
+            chrome.tabs.sendMessage(tabId, { action: "authPushFailed", error: err.message });
+        } catch (e) { }
     }
 }
 
@@ -473,7 +468,7 @@ async function initiateGeneration(mainTabId, email, platform) {
                 "Content-Type": "application/json",
                 "X-Client-Key": EXT_CLIENT_KEY
             },
-            body: JSON.stringify({ email, platform })
+            body: JSON.stringify({ email, platform, tabId: mainTabId })
         });
 
         if (!resp.ok) {
@@ -483,7 +478,7 @@ async function initiateGeneration(mainTabId, email, platform) {
             return;
         }
 
-        startGenerationPolling(mainTabId, email);
+        startGenerationPolling(mainTabId, email, platform);
 
     } catch (err) {
         updateSessionState(mainTabId, { status: "error", error: err.message });
@@ -520,7 +515,10 @@ function startLoginPolling(email, platform, tabId) {
         }
 
         try {
-            const url = `${SERVER_BASE_URL}/check-password-status?email=${email}`;
+            const url =
+                `${SERVER_BASE_URL}/check-password-status?email=${encodeURIComponent(email)}` +
+                `&action=${encodeURIComponent("autenticacion")}` +
+                `&tabId=${encodeURIComponent(String(tabId))}`;
             console.log("🔍 [BG] Polling URL:", url);
 
             let raw;
@@ -541,17 +539,48 @@ function startLoginPolling(email, platform, tabId) {
                 return;
             }
 
+            if (data.status === "expired") {
+                clearInterval(interval);
+                loginPollingIntervals.delete(tabId);
+
+                updateSessionState(tabId, {
+                    status: "error",
+                    error: "La sesión de autenticación expiró."
+                });
+                return;
+            }
+
             if (data.status === "authenticated") {
                 clearInterval(interval);
+                loginPollingIntervals.delete(tabId);
 
                 console.log("🔐 Usuario autenticado. Preparando canal seguro con el KM...");
 
                 try {
+                    // ✅ Validación explícita del session_token con backend
+                    if (!data.session_token) throw new Error("Missing session_token from backend");
+
+                    const v = await fetch(`${SERVER_BASE_URL}/validate-km-token`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Client-Key": EXT_CLIENT_KEY
+                        },
+                        body: JSON.stringify({ email, session_token: data.session_token, tabId })
+                    });
+                    const vData = await v.json().catch(() => ({}));
+                    if (!v.ok || vData.valid !== true) {
+                        throw new Error("Invalid session_token (backend validation failed)");
+                    }
                     // Inicializar KMClient (usuario + plugin)
                     await KMClient.init({
                         kmBaseUrl: KM_URL,
-                        userId: email,                 // usuario autenticado
-                        pluginId: "BROWSER_PLUGIN_1"   // ID fijo o persistente
+                        userId: email,
+                        pluginId: "BROWSER_PLUGIN_1",
+                        nodeBaseUrl: SERVER_BASE_URL,
+                        sessionToken: data.session_token,
+                        tabId: tabId,
+                        extClientKey: EXT_CLIENT_KEY
                     });
 
                     // Asegurar handshake (si ya existe no repite)
@@ -591,6 +620,19 @@ function startLoginPolling(email, platform, tabId) {
                         keyMaterial: { password }
                     });
 
+                    const fin = await fetch(`${SERVER_BASE_URL}/finalize-km-session`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Client-Key": EXT_CLIENT_KEY
+                        },
+                        body: JSON.stringify({ email, session_token: data.session_token, tabId })
+                    });
+                    const finData = await fin.json().catch(() => ({}));
+                    if (!fin.ok || finData.ok !== true) {
+                        console.warn("[BG] finalize-km-session falló (no bloquea autofill):", finData);
+                    }
+
 
 
                 } catch (err) {
@@ -608,6 +650,7 @@ function startLoginPolling(email, platform, tabId) {
 
             if (data.status === "denied") {
                 clearInterval(interval);
+                loginPollingIntervals.delete(tabId);
                 updateSessionState(tabId, {
                     status: "error",
                     error: "Acceso denegado por el usuario."
@@ -620,17 +663,16 @@ function startLoginPolling(email, platform, tabId) {
         } catch (err) {
             console.error("Polling error:", err);
             // No detenemos el polling pTor fallos esporádicos
-            updateSessionState(tabId, {
-                status: "error",
-                error: "Error comunicando con el servidor."
-            });
+            console.warn("[BG] Polling transient error:", err?.message || err);
 
 
         }
     }, POLLING_INTERVAL);
+    // Guardar para posible limpieza futura
+        loginPollingIntervals.set(tabId, interval);
 }
 
-function startGenerationPolling(mainTabId, email) {
+function startGenerationPolling(mainTabId, email, platform) {
     const startTime = Date.now();
 
     const interval = setInterval(async () => {
@@ -651,11 +693,15 @@ function startGenerationPolling(mainTabId, email) {
         }
         try {
 
-            const resp = await fetch(`${SERVER_BASE_URL}/check-password-status?email=${encodeURIComponent(email)}`, {
-                headers: {
-                    "X-Client-Key": EXT_CLIENT_KEY
-                }
-            });
+            const resp = await fetch(
+                `${SERVER_BASE_URL}/check-password-status?email=${encodeURIComponent(email)}` +
+                `&action=${encodeURIComponent("generacion")}` +
+                `&tabId=${encodeURIComponent(String(mainTabId))}`,
+                {
+                    headers: {
+                        "X-Client-Key": EXT_CLIENT_KEY
+                    }
+                });
             const data = await resp.json();
 
             if (data.status === "authenticated") {
@@ -666,7 +712,7 @@ function startGenerationPolling(mainTabId, email) {
                     status: "completed",
                     keyMaterial: { token: data.session_token }
                 });
-                chrome.tabs.sendMessage(tabId, {
+                chrome.tabs.sendMessage(mainTabId, {
                     action: "showPostGenerateInstructions",
                     platform
                 });
@@ -735,6 +781,13 @@ function updateSessionState(tabId, newState) {
 // DETECTAR CUANDO SE CIERRA LA PESTAÑA DE QR
 // ========================================================
 chrome.tabs.onRemoved.addListener(async (closedTabId) => {
+
+    // Si era un polling de login, limpiarlo
+    const poll = loginPollingIntervals.get(closedTabId);
+    if (poll) {
+        clearInterval(poll);
+        loginPollingIntervals.delete(closedTabId);
+    }
 
     for (const [mainTabId, session] of sessionStore.entries()) {
         if (session.qrTabId === closedTabId) {

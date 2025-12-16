@@ -35,6 +35,7 @@ app.use((req, res, next) => {
 const PORT = process.env.PORT || 3000;
 
 const EXT_CLIENT_KEY = process.env.EXT_CLIENT_KEY; // clave compartida con la extensión
+const KM_PLUGIN_REG_SECRET = process.env.KM_PLUGIN_REG_SECRET; // secreto  server↔KM
 
 
 // URLs de otros módulos
@@ -70,6 +71,32 @@ function dwarn(...args) {
         console.warn(...args); 
     }
 }
+
+function requireTemporal(temp, { action, statuses, tabId }) {
+    if (!temp) {
+        const err = new Error("temporal_not_found");
+        err.statusCode = 404;
+        throw err;
+    }
+    if (action && temp.action !== action) {
+        const err = new Error("invalid_action");
+        err.statusCode = 409;
+        throw err;
+    }
+    if (statuses && !statuses.includes(temp.status)) {
+        const err = new Error("invalid_state");
+        err.statusCode = 409;
+        throw err;
+    }
+    if (tabId !== undefined && temp.meta?.tabId !== undefined) {
+        if (Number(tabId) !== Number(temp.meta.tabId)) {
+            const err = new Error("tab_mismatch");
+            err.statusCode = 403;
+            throw err;
+        }
+    }
+}
+
 
 // Conexión a MongoDB
 mongoose.connect(config.MONGODB_URI)
@@ -178,6 +205,30 @@ function loadTemplate(name) {
 // Genera un TOKEN DE DESBLOQUEO temporal (para login/registro)
 function generateToken() {
     return crypto.randomBytes(32).toString("hex");
+}
+
+//firmar -> comunicacion SERVER <-> KEY MANAGER
+// Canonical JSON: estable para HMAC (sort keys, sin espacios)
+function canonicalJson(obj) {
+    const sortObject = (o) => {
+        if (Array.isArray(o)) return o.map(sortObject);
+        if (o && typeof o === "object") {
+            return Object.keys(o).sort().reduce((acc, k) => {
+                acc[k] = sortObject(o[k]);
+                return acc;
+            }, {});
+        }
+        return o;
+    };
+    return JSON.stringify(sortObject(obj));
+}
+
+function signPluginRegistration(payload) {
+    if (!KM_PLUGIN_REG_SECRET) {
+        throw new Error("KM_PLUGIN_REG_SECRET no configurado en el servidor Node");
+    }
+    const msg = canonicalJson(payload);
+    return crypto.createHmac("sha256", KM_PLUGIN_REG_SECRET).update(msg).digest("hex");
 }
 
 
@@ -806,7 +857,7 @@ app.post('/request-gen-login', clientAuth, loginRateLimiter, async (req, res) =>
     dlog("Email:", req.body.email);
     dlog("Platform:", req.body.platform);
 
-    const { email, platform } = req.body;
+    const { email, platform, tabId } = req.body;
 
     try {
         const subDoc = await Subscripcion.findOne({ email });
@@ -827,8 +878,8 @@ app.post('/request-gen-login', clientAuth, loginRateLimiter, async (req, res) =>
             platform,
             session_token,
             status: "pending",
-            action: "generacion"
-
+            action: "generacion",
+            meta: { tabId: Number.isFinite(Number(tabId)) ? Number(tabId) : undefined }
         });
         await newChallenge.save();
 
@@ -918,8 +969,8 @@ app.get('/mobile_client/gen-confirm', async (req, res) => {
 app.post('/mobile_client/gen-continue', async (req, res) => {
     const { session_token } = req.body;
 
-    dlog("🟦 [GEN][AUTH-CONTINUE] POST recibido:", { session_token });
-    dlog("🟦 [GEN-CONTINUE] Body recibido:", req.body);
+    dlog("[GEN][AUTH-CONTINUE] POST recibido:", { session_token });
+    dlog("[GEN-CONTINUE] Body recibido:", req.body);
 
 
     if (!session_token) {
@@ -929,7 +980,7 @@ app.post('/mobile_client/gen-continue', async (req, res) => {
 
     try {
         const challenge = await Temporal.findOne({ session_token: session_token });
-        dlog("🟦 [GEN-CONTINUE] Challenge encontrado:", challenge ? {
+        dlog("[GEN-CONTINUE] Challenge encontrado:", challenge ? {
             email: challenge.email,
             action: challenge.action,
             status: challenge.status,
@@ -948,10 +999,12 @@ app.post('/mobile_client/gen-continue', async (req, res) => {
         }
 
         if (challenge.action !== "generacion") {
+            dlog("❌ [GEN-CONTINUE] Acción inválida:", challenge.action);
             return res.status(400).send("Invalid action for gen-continue");
+
         }
 
-        dlog("❌ [GEN-CONTINUE] Acción inválida:", challenge.action);
+        
 
 
         dlog("🟦 [LOGIN][GEN-CONTINUE] Challenge:", {
@@ -977,7 +1030,7 @@ app.post('/mobile_client/gen-continue', async (req, res) => {
 
         const dataBio = await respBio.json().catch(() => ({}));
 
-        dlog("🟦 [LOGIN][GEN-CONTINUE] Respuesta authenticate-start:", dataBio);
+        dlog("[LOGIN][GEN-CONTINUE] Respuesta authenticate-start:", dataBio);
 
         if (!respBio.ok || !dataBio.success) {
             challenge.status = "biometria_failed";
@@ -986,7 +1039,7 @@ app.post('/mobile_client/gen-continue', async (req, res) => {
             return res.send("<h1>Error iniciando autenticación biométrica</h1>");
         }
 
-        dlog("🟢 [LOGIN][GEN-CONTINUE] Biometría iniciada, esperando callback…");
+        dlog("[LOGIN][GEN-CONTINUE] Biometría iniciada, esperando callback…");
 
         return res.send(`
             <h1>Autenticación iniciada</h1>
@@ -1020,7 +1073,7 @@ app.post('/api/biometric-login-callback', async (req, res) => {
 
     try {
 
-        // 1) Validar API Key
+        // Validar API Key
         const auth = req.headers.authorization || "";
         const apiKey = auth.replace("Bearer ", "");
 
@@ -1029,7 +1082,7 @@ app.post('/api/biometric-login-callback', async (req, res) => {
             return res.status(401).json({ error: "unauthorized" });
         }
 
-        // 2) Extraer datos
+        // Extraer datos
         const {
             user_id,
             email,
@@ -1053,10 +1106,11 @@ app.post('/api/biometric-login-callback', async (req, res) => {
         });
 
 
-        // 3) Buscar el challenge de LOGIN correspondiente
+        // Buscar el challenge de LOGIN correspondiente
         const temp = await Temporal.findOne({
             email,
-            session_token
+            session_token,
+            action: "autenticacion"
         }).sort({ createdAt: -1 });
 
 
@@ -1075,6 +1129,16 @@ app.post('/api/biometric-login-callback', async (req, res) => {
                 challengeId: temp.challengeId,
                 status: temp.status
             });
+        }
+        
+        if (temp.status !== "confirmed") {
+            await logSecurityEvent("biometric_without_confirmation", {
+                email,
+                ip: req.ip,
+                path: req.path,
+                meta: { currentStatus: temp.status }
+            });
+            return res.status(409).json({ error: "auth_not_confirmed" });
         }
 
         dlog("🟦 [LOGIN][BIO-CALLBACK] Callback recibido:", {
@@ -1147,7 +1211,7 @@ app.post('/api/biometric-gen-callback', async (req, res) => {
 
     try {
 
-        // 1) Validar API Key
+        // Validar API Key
         const auth = req.headers.authorization || "";
         const apiKey = auth.replace("Bearer ", "");
 
@@ -1156,7 +1220,7 @@ app.post('/api/biometric-gen-callback', async (req, res) => {
             return res.status(401).json({ error: "unauthorized" });
         }
 
-        // 2) Extraer datos
+        //  Extraer datos
         const {
             user_id,
             email,
@@ -1180,11 +1244,12 @@ app.post('/api/biometric-gen-callback', async (req, res) => {
         });
 
 
-        // 3) Buscar el challenge de LOGIN correspondiente
+        //  Buscar el challenge de LOGIN correspondiente
         //    Asumimos que guardaste session_token en Temporal.token
         const temp = await Temporal.findOne({
             email,
-            session_token
+            session_token,
+            action: "generacion"
         }).sort({ createdAt: -1 });
 
 
@@ -1330,13 +1395,28 @@ app.post('/request-auth-login', clientAuth, loginRateLimiter, async (req, res) =
     dlog("Email:", req.body.email);
     dlog("Platform:", req.body.platform);
 
-    const { email, platform } = req.body;
+    const { email, platform, tabId } = req.body;
 
     try {
+
+        // Limpia-> solo un login activo por email
+        await Temporal.deleteMany({
+            email,
+            action: "autenticacion",
+            status: { $in: ["pending", "confirmed", "biometria_ok", "km_pending"] }
+        });
+
+
         const subDoc = await Subscripcion.findOne({ email });
         if (!subDoc) {
             return res.status(404).json({ error: 'No se encontró un dispositivo vinculado para este email.' });
         }
+
+        // (Opcional) hash del endpoint para rastrear binding dispositivo
+        const endpoint = subDoc.subscription?.endpoint || "";
+        const subscriptionHash = endpoint
+            ? crypto.createHash("sha256").update(endpoint).digest("hex")
+            : null;
 
         const challengeId = 'CHLG_' + Math.random().toString(36).substring(2, 9);
         const session_token = generateToken();
@@ -1346,7 +1426,11 @@ app.post('/request-auth-login', clientAuth, loginRateLimiter, async (req, res) =
             platform,
             session_token,
             status: "pending",
-            action: "autenticacion"
+            action: "autenticacion",
+            meta: {
+                tabId: Number.isFinite(Number(tabId)) ? Number(tabId) : undefined,
+                subscriptionHash: subscriptionHash || undefined
+            }
 
         });
         await newChallenge.save();
@@ -1399,9 +1483,13 @@ app.get('/mobile_client/auth-confirm', async (req, res) => {
     dlog("🟦 [LOGIN][AUTH-CONFIRM] Request recibida:", { status });
 
     try {
-        const challenge = await Temporal.findOne({ session_token: session_token });
+        const challenge = await Temporal.findOne({ session_token: session_token }).sort({ createdAt: -1 });
+        requireTemporal(challenge, {
+            action: "autenticacion",
+            statuses: ["pending"]
+        });
 
-        dlog("🟦 [LOGIN][AUTH-CONFIRM] Challenge encontrado:", challenge ? {
+        dlog("[LOGIN][AUTH-CONFIRM] Challenge encontrado:", challenge ? {
             email: challenge.email,
             status: challenge.status,
             challengeId: challenge.challengeId
@@ -1413,12 +1501,13 @@ app.get('/mobile_client/auth-confirm', async (req, res) => {
         }
 
         if (status === "confirmed") {
-            if (challenge.status === "pending") {
-                challenge.status = "confirmed";
-                await challenge.save();
-                console.log("🟦 [LOGIN][AUTH-CONFIRM] Challenge marcado confirmed");
+            if (challenge.status !== "pending") {
+                return res.status(409).send("Sesión ya utilizada o inválida.");
             }
 
+            challenge.status = "confirmed";
+            await challenge.save();
+            dlog("[LOGIN][AUTH-CONFIRM] Challenge marcado confirmed");
             const html = loadTemplate("auth_estetico.html")
                 .replace("{{SESSION_TOKEN}}", session_token);
 
@@ -1441,7 +1530,7 @@ app.get('/mobile_client/auth-confirm', async (req, res) => {
 app.post('/mobile_client/auth-continue', async (req, res) => {
     const { session_token } = req.body;
 
-    dlog("🟦 [LOGIN][AUTH-CONTINUE] POST recibido:", { session_token });
+    dlog("[LOGIN][AUTH-CONTINUE] POST recibido:", { session_token });
 
     if (!session_token) {
         dwarn("⚠️ [LOGIN][AUTH-CONTINUE] Falta token");
@@ -1449,8 +1538,12 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
     }
 
     try {
-        const challenge = await Temporal.findOne({ session_token: session_token });
+        const challenge = await Temporal.findOne({ session_token: session_token }).sort({ createdAt: -1 });
 
+        requireTemporal(challenge, {
+            action: "autenticacion",
+            statuses: ["confirmed"]
+        });
 
         if (!challenge) {
             dwarn("⚠️ [LOGIN][AUTH-CONTINUE] Challenge no encontrado para token");
@@ -1467,13 +1560,13 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
         }
 
 
-        dlog("🟦 [LOGIN][AUTH-CONTINUE] Challenge:", {
+        dlog("[LOGIN][AUTH-CONTINUE] Challenge:", {
             email: challenge.email,
             session_token: challenge.session_token,
             status: challenge.status
         });
 
-        // ✨ AHORA sí inicia biometría
+        // ✨ Inicia biometría
         const respBio = await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/authenticate-start`, {
             method: "POST",
             headers: {
@@ -1490,7 +1583,7 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
 
         const dataBio = await respBio.json().catch(() => ({}));
 
-        dlog("🟦 [LOGIN][AUTH-CONTINUE] Respuesta authenticate-start:", dataBio);
+        dlog("[LOGIN][AUTH-CONTINUE] Respuesta authenticate-start:", dataBio);
 
         if (!respBio.ok || !dataBio.success) {
             challenge.status = "biometria_failed";
@@ -1499,7 +1592,7 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
             return res.send("<h1>Error iniciando autenticación biométrica</h1>");
         }
 
-        dlog("🟢 [LOGIN][AUTH-CONTINUE] Biometría iniciada, esperando callback…");
+        dlog("[LOGIN][AUTH-CONTINUE] Biometría iniciada, esperando callback…");
 
         return res.send(`
             <h1>Autenticación iniciada</h1>
@@ -1522,30 +1615,45 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
 app.get('/check-password-status', clientAuth, statusRateLimiter, async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     const { email } = req.query;
+    const action = (req.query.action || "").toString().trim();   // "autenticacion" | "generacion" | ""
+    const tabIdRaw = req.query.tabId;
+    const tabId = (tabIdRaw !== undefined && tabIdRaw !== null && tabIdRaw !== "")
+         ? Number(tabIdRaw)
+         : null;
 
     try {
-        // Buscar challenge con biometría OK
-        const okChallenge = await Temporal.findOne({
-            email,
-            status: 'biometria_ok'
-        }).sort({ createdAt: -1 });
 
-        if (okChallenge) {
-            const session_token = okChallenge.session_token;
+        // Filtro base
+        const base = { email };
+        if (action) base.action = action;
+         // Si se envía tabId, se usa para evitar colisión multi-pestaña -> se rellene multiples pestañas
+        if (Number.isFinite(tabId)) base["meta.tabId"] = tabId;
 
-            okChallenge.status = 'used'; //Token de un solo uso
-            await okChallenge.save();
-            return res.status(200).json({
-                status: 'authenticated',
-                session_token   // token de desbloqueo que usará la extensión
-            });
+        const exists = await Temporal.findOne(base);
+
+        if (!exists) {
+            return res.status(200).json({ status: "expired" });
         }
 
-        // Ver si hay alguno denegado o fallido
+        // Consumir el challenge biometría OK → used
+         const okChallenge = await Temporal.findOneAndUpdate(
+             { ...base, status: "biometria_ok" },
+             { $set: { status: "km_pending" } },
+             { sort: { createdAt: -1 }, new: true }
+         );
+
+         if (okChallenge) {
+             return res.status(200).json({
+                 status: "authenticated",
+                 session_token: okChallenge.session_token
+             });
+         }
+
+         // Denied / failed (solo del action/tabId si aplica)
         const badChallenge = await Temporal.findOne({
-            email,
-            status: { $in: ['denied', 'biometria_failed'] }
-        }).sort({ createdAt: -1 });
+            ...base,
+            status: { $in: ["denied", "biometria_failed"] }
+         }).sort({ createdAt: -1 });
 
         if (badChallenge) {
             return res.status(200).json({ status: 'denied' });
@@ -1630,7 +1738,7 @@ app.post('/api/analizer-register', async (req, res) => {
         }
 
         //  GUARDAR EN MONGO 
-        dlog("✅ [NODE] Temporal encontrado. Actualizando estado...");
+        dlog("[NODE] Temporal encontrado. Actualizando estado...");
         temp.status = 'biometria_ok';
         temp.userBiometriaId = user_id;
         temp.cadenaValores = cadenaValores;
@@ -1698,18 +1806,109 @@ app.get("/mobile_client/registro-completado", (req, res) => {
 //===========================================================
 //  confirmacion SESSION_TOKEN con KM TOKEN
 //===========================================================
-app.post("/validate-km-token", async (req, res) => {
-    const { session_token, email } = req.body;
+app.post("/validate-km-token", clientAuth, async (req, res) => {
+    try {
+        const { session_token, email, tabId } = req.body;
+        if (!email || !session_token) return res.status(400).json({ valid: false, error: "missing_fields" });
 
-    // Verifica en Temporal si existe un challenge con ese token
-    const temp = await Temporal.findOne({ email, session_token: session_token });
+        // Validación FUERTE: debe ser login, en estado km_pending, y (si viene) ligado al tabId
+        const q = {
+            email,
+            session_token,
+            action: "autenticacion",
+            status: "km_pending"
+        };
+        const tid = (tabId !== undefined && tabId !== null && tabId !== "") ? Number(tabId) : null;
+        if (Number.isFinite(tid)) q["meta.tabId"] = tid;
 
-    if (!temp) {
-        return res.status(404).json({ valid: false });
+        const temp = await Temporal.findOne(q).sort({ createdAt: -1 });
+        if (!temp) return res.status(404).json({ valid: false });
+
+        return res.status(200).json({ valid: true });
+    } catch (e) {
+        console.error("❌ Error en /validate-km-token:", e);
+        return res.status(500).json({ valid: false, error: "server_error" });
     }
+});
 
-    // Si existe
-    return res.status(200).json({ valid: true });
+/**
+ * TOKEN PARA AUTORIZAR PUBLIC KEY DEL PLUGIN EN KM
+ */
+/**
+ * Emite un token (HMAC) para autorizar el registro de la public key del plugin en el KM.
+ * Importante: la extensión NO conoce KM_PLUGIN_REG_SECRET, solo recibe el token ya firmado.
+ */
+app.post("/km-plugin-reg-token", clientAuth, async (req, res) => {
+    try {
+        const { email, session_token, tabId, plugin_id, public_key_b64 } = req.body;
+        if (!email || !session_token || !plugin_id || !public_key_b64) {
+            return res.status(400).json({ ok: false, error: "missing_fields" });
+        }
+
+        // Solo durante login ->en km_pending (biometría OK y aún no consumido)
+        const q = {
+            email,
+            session_token,
+            action: "autenticacion",
+            status: "km_pending"
+        };
+        const tid = (tabId !== undefined && tabId !== null && tabId !== "") ? Number(tabId) : null;
+        if (Number.isFinite(tid)) q["meta.tabId"] = tid;
+
+        const temp = await Temporal.findOne(q).sort({ createdAt: -1 });
+        requireTemporal(temp, {
+        action: "autenticacion",
+                statuses: ["km_pending"],
+                tabId
+        });
+        if (!temp) {
+            return res.status(403).json({ ok: false, error: "invalid_session_state" });
+        }
+
+        const payload = {
+            user_id: email,
+            plugin_id: plugin_id,
+            public_key_b64: public_key_b64
+        };
+
+        const reg_token = signPluginRegistration(payload);
+        return res.json({ ok: true, reg_token });
+    } catch (e) {
+        console.error("❌ Error en /km-plugin-reg-token:", e);
+        return res.status(500).json({ ok: false, error: "server_error" });
+    }
+});
+
+/**
+ *  Finaliza el login y consume el token (ONE-TIME) SOLO cuando el KM ya fue exitoso.
+ */
+app.post("/finalize-km-session", clientAuth, async (req, res) => {
+    try {
+        const { email, session_token, tabId } = req.body;
+        if (!email || !session_token) return res.status(400).json({ ok: false, error: "missing_fields" });
+
+        const q = {
+            email,
+            session_token,
+            action: "autenticacion",
+            status: "km_pending"
+        };
+        const tid = (tabId !== undefined && tabId !== null && tabId !== "") ? Number(tabId) : null;
+        if (Number.isFinite(tid)) q["meta.tabId"] = tid;
+
+        // Atómico: km_pending -> used
+        const updated = await Temporal.findOneAndUpdate(
+            q,
+            { $set: { status: "used" } },
+            { new: true }
+        );
+
+        if (!updated) return res.status(404).json({ ok: false, error: "not_found_or_already_used" });
+        return res.json({ ok: true });
+    } catch (e) {
+        console.error("❌ Error en /finalize-km-session:", e);
+        return res.status(500).json({ ok: false, error: "server_error" });
+    }
 });
 
 
