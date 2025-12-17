@@ -25,8 +25,6 @@ const sessionStore = new Map();
 
 const loginPollingIntervals = new Map();
 
-if (!location.protocol.startsWith('chrome-extension')) return;
-
 
 // Map<string(email), {
 //   status: "none" | "login_pending" | "authenticated" | "denied" | "error",
