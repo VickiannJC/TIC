@@ -1950,8 +1950,13 @@ app.use('/mobile_client', express.static(path.join(__dirname, '..', 'mobile_clie
 //===========================================================
 
 app.use((err, req, res, next) => {
-    console.error("🔥 Error interno:", err);
-
+    console.error("🔥 ERROR REAL:", {
+        message: err.message,
+        stack: err.stack,
+        url: req.originalUrl,
+        method: req.method,
+        body: req.body
+    });
     // Si el request viene de la extensión → responder JSON
     if (req.headers["content-type"] === "application/json" ||
         req.url.includes("/generar-qr-session") ||
@@ -1977,6 +1982,19 @@ app.use((err, req, res, next) => {
         </html>
     `);
 });
+
+app.use((req, res, next) => {
+    res.on("finish", () => {
+        if (
+            res.getHeader("content-type") &&
+            res.getHeader("content-type").includes("text/html")
+        ) {
+            console.warn("⚠️ RESPUESTA HTML enviada a:", req.method, req.originalUrl);
+        }
+    });
+    next();
+});
+
 
 //===========================================================
 //  INICIAR SERVIDOR
