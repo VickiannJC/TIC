@@ -1,4 +1,4 @@
-// sw_v56s.js — Service Worker para el cliente móvil de Psy-Password
+// sw_v57s.js — Service Worker para el cliente móvil de Psy-Password
 // Cambia el nombre del archivo o añade este comentario para forzar actualización
 
 console.log("[SW] Service Worker CARGADO y EJECUTADO.");
@@ -145,7 +145,8 @@ self.addEventListener('notificationclick', (event) => {
             console.warn('[SW] URL vacía, no se puede abrir');
             return;
         }
-        event.waitUntil(clients.openWindow(url));
+        //event.waitUntil(clients.openWindow(url));
+        console.log("[SW] openWindow SUPRIMIDO:", url);
     };
 
     // Si el usuario toca el cuerpo de la notificación (sin botón),
