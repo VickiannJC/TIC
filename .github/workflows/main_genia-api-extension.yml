@@ -55,6 +55,8 @@ jobs:
         with:
           app-name: 'genia-api-extension'
           slot-name: 'Production'
-          package: Extension/server_backend
+          package: .
+          working-directory: Extension/server_backend
 
           
+
