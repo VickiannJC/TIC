@@ -42,7 +42,7 @@ const KM_PLUGIN_REG_SECRET = process.env.KM_PLUGIN_REG_SECRET; // secreto  serve
 const BIOMETRIA_BASE_URL = process.env.BIOMETRIA_BASE_URL;
 const BIOMETRIA_API_KEY = process.env.BIOMETRIA_API_KEY;
 const BIOMETRIA_JWT_SECRET = process.env.BIOMETRIA_JWT_SECRET;
-const SERVER_BASE_URL = 'https://knit-newport-cdt-pan.trycloudflare.com';
+const SERVER_BASE_URL = process.env.SERVER_BASE_URL;
 
 const ANALYSIS_BASE_URL = process.env.ANALYSIS_BASE_URL;
 

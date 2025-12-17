@@ -3,7 +3,7 @@
  * y enviarla al servidor Node.js.
  */
 // URL base de tu servidor Node.js
-const SERVER_BASE_URL = 'genia-api-extension-avbke7bhgea4bngk.eastus2-01.azurewebsites.net';
+const SERVER_BASE_URL = 'https://genia-api-extension-avbke7bhgea4bngk.eastus2-01.azurewebsites.net';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // --- FIX: evitar doble ejecución si el usuario abre varias veces ---
