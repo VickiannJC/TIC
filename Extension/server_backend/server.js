@@ -1974,15 +1974,11 @@ app.use((err, req, res, next) => {
     }
 
     // Si viene del navegador móvil → responder HTML amigable
-    return res.status(500).send(`
-        <html>
-            <body style="font-family:sans-serif; margin:40px;">
-                <h1>Error Interno</h1>
-                <p>Ocurrió un problema procesando la solicitud.</p>
-                <p>Por favor regresa al sitio y genera un nuevo código QR.</p>
-            </body>
-        </html>
-    `);
+    return res.status(err.statusCode || 500).json({
+        error: "internal_server_error",
+        message: err.message || "Error interno del servidor",
+        path: req.originalUrl
+    });
 });
 
 app.use((req, res, next) => {
