@@ -99,9 +99,24 @@ function requireTemporal(temp, { action, statuses, tabId }) {
 
 
 // Conexión a MongoDB
-mongoose.connect(config.MONGODB_URI)
-    .then(() => console.log('✅ Conectado a MongoDB'))
-    .catch(err => console.error('❌ Error al conectar a MongoDB:', err));
+const mongoose = require("mongoose");
+
+mongoose.set("bufferCommands", false);
+
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+});
+
+mongoose.connection.on("connected", () => {
+  console.log("✅ Mongo conectado");
+});
+
+mongoose.connection.on("error", err => {
+  console.error("❌ Mongo error:", err);
+});
+
+
 
 // Middlewares
 app.use(cors({
@@ -285,12 +300,22 @@ async function logSecurityEvent(type, { email, ip, path, userAgent, meta } = {})
 }
 
 
+app.get("/mongo-health", async (req, res) => {
+  try {
+    await mongoose.connection.db.admin().ping();
+    res.json({ mongo: "ok" });
+  } catch (e) {
+    res.status(500).json({ mongo: "error", detail: e.message });
+  }
+});
+
+
 //===========================================================
 //  ENDPOINTS REGISTRO / VINCULACIÓN (EXTENSIÓN + MÓVIL)
 //===========================================================
 
 /**
- * 1) La extensión pide un QR para registro.
+ * La extensión pide un QR para registro.
  *    - Se limpia cualquier sesión QR previa para ese email.
  *    - Se crea QRSession (pending) con TTL (definido en el modelo).
  *    - Se genera un DataURL con QR apuntando a /mobile_client/register-mobile.html?sessionId=...
@@ -591,7 +616,7 @@ app.post('/register-mobile', async (req, res) => {
 });
 
 /**
- * 4) Página de registro estético para el móvil.
+ * Página de registro estético para el móvil.
  *    - GET: muestra un HTML con iframe/botón hacia módulo biométrico.
  *    - POST: se usa si quieres que biometría haga callback aquí y recargue la vista.
  */
@@ -605,8 +630,7 @@ app.get("/mobile_client/register-confirm", async (req, res) => {
             return res.send(html);
         }
 
-        // NO llamar check-user aquí
-        // Solo mostrar registro_estetico.html
+        // Mostrar registro_estetico.html
 
         const html = loadTemplate("registro_estetico.html")
             .replace("{{EMAIL}}", email)
@@ -665,7 +689,7 @@ app.post("/mobile_client/register-confirm-continue", async (req, res) => {
         }
 
         // 3. CASO B: Usuario NO existe → INICIAR TEMPORIZADOR DE ESPERA
-        dlog("🟢 Usuario no existe, iniciando temporizador de espera para registro…");
+        dlog("Usuario no existe, iniciando temporizador de espera para registro…");
 
         // cancelar timer previo si existiera
         if (biometricRegTimers.has(email)) {
@@ -690,7 +714,7 @@ app.post("/mobile_client/register-confirm-continue", async (req, res) => {
 
         biometricRegTimers.set(email, timer);
 
-        // 4. MOSTRAR PANTALLA DE ESPERA (sin authenticate-start)
+        // MOSTRAR PANTALLA DE ESPERA (sin authenticate-start)
         return res.send(
             loadTemplate("registro_estetico.html")
                 .replace("{{EMAIL}}", email)
@@ -729,7 +753,7 @@ app.get("/api/registro-estado", async (req, res) => {
 
 app.post("/api/registro-finalizado", async (req, res) => {
 
-    dlog("📥 BODY /api/registro-finalizado:", req.body);
+    dlog("BODY /api/registro-finalizado:", req.body);
     try {
         const { user_id, email, session_token, action } = req.body;
 
@@ -780,9 +804,11 @@ app.post("/api/registro-finalizado", async (req, res) => {
         dlog("✅ Registro biométrico guardado correctamente en MongoDB.");
 
         // Registro completado para el email
-        await QRSession.deleteMany({ email }); // limpiar si quieres
-
-
+        await QRSession.deleteMany({ email }); //limpiar sesiones QR ya usadas
+        dlog("🧹 Sesiones QR limpiadas para:", email);
+        
+        
+        // Enviar datos al módulo de análisis psicológico
         dlog("➡️ Enviando payload a psy_analyzer:", {
             email, user_id, raw_responses, session_token
         });
