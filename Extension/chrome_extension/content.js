@@ -13,6 +13,9 @@ let pingFailures = 0;
 let hasWarnedPing = false;
 const MAX_PING_FAILURES = 5;
 
+if (!location.protocol.startsWith('chrome-extension')) return;
+
+
 function pingBackground() {
     return new Promise((resolve, reject) => {
         try {

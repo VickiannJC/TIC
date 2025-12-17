@@ -1,3 +1,5 @@
+if (!location.protocol.startsWith('chrome-extension')) return;
+
 (function () {
     // ==============================
     // 1) UTILIDADES BASE64 / BYTES

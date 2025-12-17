@@ -1,4 +1,6 @@
 // Recibimos mensajes desde background.js
+if (!location.protocol.startsWith('chrome-extension')) return;
+
 chrome.runtime.onMessage.addListener((msg) => {
     if (msg.action === "updateQR") {
         const qrImage = document.getElementById("qrImage");

@@ -520,7 +520,10 @@ app.get("/qr-session-status", async (req, res) => {
  *      - Crear Temporal tipo REG_XXXX con token efímero.
  *      - Programar timeout de 1h: biometría no responde, eliminar Subscripcion/Temporal/QRSession.
  *      - Responder con continueUrl (para que el móvil muestre botón "Continuar").
+ * 
+ * 
  */
+
 app.post('/register-mobile', async (req, res) => {
     const { sessionId, subscription } = req.body;
 
@@ -528,7 +531,13 @@ app.post('/register-mobile', async (req, res) => {
 
     try {
         const sessionData = await QRSession.findOne({ sessionId });
-
+        if (req.path !== '/register-mobile') {
+            console.error("🚨 RUTA MAL FORMADA:", {
+                path: req.path,
+                originalUrl: req.originalUrl
+            });
+            return res.status(400).json({ error: 'invalid_path' });
+        }
         if (!sessionData) {
             return res.status(404).json({
                 error: "session_not_found",
@@ -2030,6 +2039,18 @@ app.use((req, res, next) => {
         return res.status(404).json({
             error: "api_not_found",
             path: req.originalUrl
+        });
+    }
+    next();
+});
+
+app.post('*', (req, res, next) => {
+    if (req.path.includes('register-mobile')) {
+        console.log("🔥 FETCH REAL ORIGEN:", {
+            path: req.path,
+            referer: req.headers.referer,
+            origin: req.headers.origin,
+            userAgent: req.headers['user-agent']
         });
     }
     next();
