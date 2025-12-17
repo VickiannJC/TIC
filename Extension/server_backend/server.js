@@ -42,7 +42,7 @@ const KM_PLUGIN_REG_SECRET = process.env.KM_PLUGIN_REG_SECRET; // secreto  serve
 const BIOMETRIA_BASE_URL = process.env.BIOMETRIA_BASE_URL;
 const BIOMETRIA_API_KEY = process.env.BIOMETRIA_API_KEY;
 const BIOMETRIA_JWT_SECRET = process.env.BIOMETRIA_JWT_SECRET;
-const SERVER_BASE_URL = process.env.SERVER_BASE_URL;      
+const SERVER_BASE_URL = process.env.SERVER_BASE_URL;
 
 const ANALYSIS_BASE_URL = process.env.ANALYSIS_BASE_URL;
 
@@ -68,7 +68,7 @@ function dlog(...args) {
 }
 function dwarn(...args) {
     if (IS_DEBUG) {
-        console.warn(...args); 
+        console.warn(...args);
     }
 }
 
@@ -104,16 +104,16 @@ const mongoose = require("mongoose");
 mongoose.set("bufferCommands", false);
 
 mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
+    useNewUrlParser: true,
+    useUnifiedTopology: true
 });
 
 mongoose.connection.on("connected", () => {
-  console.log("✅ Mongo conectado");
+    console.log("✅ Mongo conectado");
 });
 
 mongoose.connection.on("error", err => {
-  console.error("❌ Mongo error:", err);
+    console.error("❌ Mongo error:", err);
 });
 
 
@@ -301,12 +301,12 @@ async function logSecurityEvent(type, { email, ip, path, userAgent, meta } = {})
 
 
 app.get("/mongo-health", async (req, res) => {
-  try {
-    await mongoose.connection.db.admin().ping();
-    res.json({ mongo: "ok" });
-  } catch (e) {
-    res.status(500).json({ mongo: "error", detail: e.message });
-  }
+    try {
+        await mongoose.connection.db.admin().ping();
+        res.json({ mongo: "ok" });
+    } catch (e) {
+        res.status(500).json({ mongo: "error", detail: e.message });
+    }
 });
 
 
@@ -382,9 +382,24 @@ app.post("/generar-qr-session", clientAuth, async (req, res) => {
 });
 
 app.post("/cancel-qr-session", clientAuth, async (req, res) => {
+    console.log("🔥 cancel-qr-session llamado desde:", {
+        headers: req.headers,
+        origin: req.headers.origin,
+        referer: req.headers.referer,
+        userAgent: req.headers["user-agent"]
+    });
+    next();
+
     const { email } = req.body;
     dlog("Cancelar QR")
     if (!email) return res.status(400).json({ error: "email_required" });
+    if (!req.headers["x-client-key"]) {
+        return res.status(403).json({
+            error: "forbidden",
+            message: "Este endpoint es solo para la extensión"
+        });
+    }
+
 
     try {
         await QRSession.deleteMany({ email });
@@ -523,7 +538,7 @@ app.post('/register-mobile', async (req, res) => {
 
         // Verificar que no exista suscripción previa para el mismo email
         const email = sessionData.email.toLowerCase().trim();
-        const existing = await Subscripcion.findOne({ email: email});
+        const existing = await Subscripcion.findOne({ email: email });
         if (existing) {
             dlog("❌ Registro bloqueado: email YA existe:", email);
 
@@ -571,7 +586,7 @@ app.post('/register-mobile', async (req, res) => {
             action: "registro"
         });
 
-        
+
 
         if (biometricRegTimers.has(email)) {
             clearTimeout(biometricRegTimers.get(email));
@@ -806,8 +821,8 @@ app.post("/api/registro-finalizado", async (req, res) => {
         // Registro completado para el email
         await QRSession.deleteMany({ email }); //limpiar sesiones QR ya usadas
         dlog("🧹 Sesiones QR limpiadas para:", email);
-        
-        
+
+
         // Enviar datos al módulo de análisis psicológico
         dlog("➡️ Enviando payload a psy_analyzer:", {
             email, user_id, raw_responses, session_token
@@ -1030,7 +1045,7 @@ app.post('/mobile_client/gen-continue', async (req, res) => {
 
         }
 
-        
+
 
 
         dlog("🟦 [LOGIN][GEN-CONTINUE] Challenge:", {
@@ -1156,7 +1171,7 @@ app.post('/api/biometric-login-callback', async (req, res) => {
                 status: temp.status
             });
         }
-        
+
         if (temp.status !== "confirmed") {
             await logSecurityEvent("biometric_without_confirmation", {
                 email,
@@ -1551,7 +1566,7 @@ app.get('/mobile_client/auth-confirm', async (req, res) => {
         console.error("❌ [LOGIN][AUTH-CONFIRM] Error:", err);
         return res.status(500).json({ error: "error interno" });
     }
-    
+
 });
 
 app.post('/mobile_client/auth-continue', async (req, res) => {
@@ -1630,7 +1645,7 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
         console.error("❌ [LOGIN][AUTH-CONTINUE] Error:", err);
         return res.status(500).json({ error: "error interno" });
     }
-    
+
 });
 
 
@@ -1646,15 +1661,15 @@ app.get('/check-password-status', clientAuth, statusRateLimiter, async (req, res
     const action = (req.query.action || "").toString().trim();   // "autenticacion" | "generacion" | ""
     const tabIdRaw = req.query.tabId;
     const tabId = (tabIdRaw !== undefined && tabIdRaw !== null && tabIdRaw !== "")
-         ? Number(tabIdRaw)
-         : null;
+        ? Number(tabIdRaw)
+        : null;
 
     try {
 
         // Filtro base
         const base = { email };
         if (action) base.action = action;
-         // Si se envía tabId, se usa para evitar colisión multi-pestaña -> se rellene multiples pestañas
+        // Si se envía tabId, se usa para evitar colisión multi-pestaña -> se rellene multiples pestañas
         if (Number.isFinite(tabId)) base["meta.tabId"] = tabId;
 
         const exists = await Temporal.findOne(base);
@@ -1664,24 +1679,24 @@ app.get('/check-password-status', clientAuth, statusRateLimiter, async (req, res
         }
 
         // Consumir el challenge biometría OK → used
-         const okChallenge = await Temporal.findOneAndUpdate(
-             { ...base, status: "biometria_ok" },
-             { $set: { status: "km_pending" } },
-             { sort: { createdAt: -1 }, new: true }
-         );
+        const okChallenge = await Temporal.findOneAndUpdate(
+            { ...base, status: "biometria_ok" },
+            { $set: { status: "km_pending" } },
+            { sort: { createdAt: -1 }, new: true }
+        );
 
-         if (okChallenge) {
-             return res.status(200).json({
-                 status: "authenticated",
-                 session_token: okChallenge.session_token
-             });
-         }
+        if (okChallenge) {
+            return res.status(200).json({
+                status: "authenticated",
+                session_token: okChallenge.session_token
+            });
+        }
 
-         // Denied / failed (solo del action/tabId si aplica)
+        // Denied / failed (solo del action/tabId si aplica)
         const badChallenge = await Temporal.findOne({
             ...base,
             status: { $in: ["denied", "biometria_failed"] }
-         }).sort({ createdAt: -1 });
+        }).sort({ createdAt: -1 });
 
         if (badChallenge) {
             return res.status(200).json({ status: 'denied' });
@@ -1885,9 +1900,9 @@ app.post("/km-plugin-reg-token", clientAuth, async (req, res) => {
 
         const temp = await Temporal.findOne(q).sort({ createdAt: -1 });
         requireTemporal(temp, {
-        action: "autenticacion",
-                statuses: ["km_pending"],
-                tabId
+            action: "autenticacion",
+            statuses: ["km_pending"],
+            tabId
         });
         if (!temp) {
             return res.status(403).json({ ok: false, error: "invalid_session_state" });
