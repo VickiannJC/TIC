@@ -4,6 +4,7 @@
  */
 // URL base de tu servidor Node.js
 const SERVER_BASE_URL = 'https://genia-api-extension-avbke7bhgea4bngk.eastus2-01.azurewebsites.net';
+const API_BASE = location.origin;
 
 document.addEventListener('DOMContentLoaded', async () => {
     // --- FIX: evitar doble ejecución si el usuario abre varias veces ---
@@ -63,7 +64,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 6. Enviar suscripción al servidor (Endpoint crucial)
         statusMessage.textContent = 'Vinculando dispositivo...';
-        const response = await fetch(new URL('/register-mobile', SERVER_BASE_URL).toString(), {
+        const response = await fetch(`${API_BASE}/register-mobile` , {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessionId, subscription })
