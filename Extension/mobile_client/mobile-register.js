@@ -69,6 +69,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             body: JSON.stringify({ sessionId, subscription })
         });
         const raw = await response.text();
+        console.log("🔴 URL:", response.url);
+        console.log("🔴 STATUS:", response.status);
+        console.log("🔴 CONTENT-TYPE:", response.headers.get("content-type"));
+        console.log("🔴 RAW (primeros 300 chars):", raw.slice(0, 300));
         let data;
         try {
             data = JSON.parse(raw);
