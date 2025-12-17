@@ -522,25 +522,25 @@ app.post('/register-mobile', async (req, res) => {
         }
 
         // Verificar que no exista suscripción previa para el mismo email
-        const emailL = sessionData.email.toLowerCase().trim();
-        const existing = await Subscripcion.findOne({ emailL});
+        const email = sessionData.email.toLowerCase().trim();
+        const existing = await Subscripcion.findOne({ email: email});
         if (existing) {
-            dlog("❌ Registro bloqueado: email YA existe:", emailL);
+            dlog("❌ Registro bloqueado: email YA existe:", email);
 
             // 🔥 LIMPIAR sesión QR y temporales de registro
-            await QRSession.deleteMany({ emailL });
-            await Temporal.deleteMany({ emailL, challengeId: { $regex: /^REG_/ } });
+            await QRSession.deleteMany({ email: email });
+            await Temporal.deleteMany({ email: email, challengeId: { $regex: /^REG_/ } });
 
             // Si había un temporizador, cancelarlo
-            if (biometricRegTimers.has(emailL)) {
-                clearTimeout(biometricRegTimers.get(emailL));
-                biometricRegTimers.delete(emailL);
+            if (biometricRegTimers.has(email)) {
+                clearTimeout(biometricRegTimers.get(email));
+                biometricRegTimers.delete(email);
             }
 
             return res.status(200).json({
                 status: "already_registered",
                 reason: "subscription_exists",
-                email: emailL,
+                email: email,
                 message: "Este correo ya tiene un dispositivo vinculado."
             });
         }
@@ -548,7 +548,7 @@ app.post('/register-mobile', async (req, res) => {
 
         // Guardar suscripción móvil definitiva
         await Subscripcion.updateOne(
-            { email: emailL },
+            { email: email },
             { subscription },
             { upsert: true }
         );
@@ -564,7 +564,7 @@ app.post('/register-mobile', async (req, res) => {
 
         await Temporal.create({
             challengeId,
-            email: emailL,
+            email: email,
             platform: sessionData.platform || "Unknown",
             session_token: session_token,   // mantener el nombre session_token
             status: "pending",
@@ -573,37 +573,37 @@ app.post('/register-mobile', async (req, res) => {
 
         
 
-        if (biometricRegTimers.has(emailL)) {
-            clearTimeout(biometricRegTimers.get(emailL));
-            biometricRegTimers.delete(emailL);
+        if (biometricRegTimers.has(email)) {
+            clearTimeout(biometricRegTimers.get(email));
+            biometricRegTimers.delete(email);
         }
 
         const timer = setTimeout(async () => {
             try {
-                console.log(`⏰ Timeout biometría para ${emailL}, limpiando datos...`);
-                await Subscripcion.deleteOne({ emailL });
-                await Temporal.deleteMany({ email: emailL, challengeId: { $regex: /^REG_/ } });
-                await QRSession.deleteMany({ email: emailL });
+                console.log(`⏰ Timeout biometría para ${email}, limpiando datos...`);
+                await Subscripcion.deleteOne({ email: email });
+                await Temporal.deleteMany({ email: email, challengeId: { $regex: /^REG_/ } });
+                await QRSession.deleteMany({ email: email });
             } catch (err) {
                 console.error("❌ Error limpiando tras timeout biometría:", err);
             } finally {
-                biometricRegTimers.delete(emailL);
+                biometricRegTimers.delete(email);
             }
         }, REGISTRATION_TIMEOUT_MS);
 
-        biometricRegTimers.set(emailL, timer);
+        biometricRegTimers.set(email, timer);
         // Construir URL base
         const proto = req.headers["x-forwarded-proto"] || req.protocol;
         const host = req.headers["x-forwarded-host"] || req.headers.host;
         const baseUrl = `${proto}://${host}`;
 
         // URL para el siguiente paso de registro biométrico
-        const continueUrl = `${baseUrl}/mobile_client/register-confirm?email=${encodeURIComponent(emailL)}&session_token=${session_token}`;
+        const continueUrl = `${baseUrl}/mobile_client/register-confirm?email=${encodeURIComponent(email)}&session_token=${session_token}`;
 
         return res.status(200).json({
             message: "subscription_saved",
             continueUrl,
-            email: emailL,
+            email: email,
             sessionId,
             challengeId,
             session_token
@@ -1551,7 +1551,7 @@ app.get('/mobile_client/auth-confirm', async (req, res) => {
         console.error("❌ [LOGIN][AUTH-CONFIRM] Error:", err);
         return res.status(500).json({ error: "error interno" });
     }
-    }
+    
 });
 
 app.post('/mobile_client/auth-continue', async (req, res) => {
@@ -1630,7 +1630,7 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
         console.error("❌ [LOGIN][AUTH-CONTINUE] Error:", err);
         return res.status(500).json({ error: "error interno" });
     }
-    }
+    
 });
 
 
