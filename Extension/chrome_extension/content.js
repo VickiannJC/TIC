@@ -1,7 +1,15 @@
 // ========================================================
 // content.js — Script inyectado en todas las páginas
 // ========================================================
+(() => {
+  // ⛔ Guard de contexto
+  if (typeof chrome === "undefined" || !chrome.runtime?.id) {
+    console.warn("[EXT] content.js fuera de extensión. Abortando.");
+    return; // ✅ AHORA SÍ ES LEGAL
+  }
 
+  // 🔽 TODO tu código real de content.js va aquí
+  console.log("[EXT] content.js ejecutándose en contexto correcto");
 // Estado interno local del content script
 let myPasswordField = null;
 
@@ -640,3 +648,5 @@ function showNotificationBanner(text) {
         setTimeout(() => banner.remove(), 500);
     }, 3000);
 }
+
+})();
