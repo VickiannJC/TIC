@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 6. Enviar suscripción al servidor (Endpoint crucial)
         statusMessage.textContent = 'Vinculando dispositivo...';
-        const response = await fetch(`${SERVER_BASE_URL}/register-mobile`, {
+        const response = await fetch(new URL('/register-mobile', SERVER_BASE_URL).toString(), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessionId, subscription })
