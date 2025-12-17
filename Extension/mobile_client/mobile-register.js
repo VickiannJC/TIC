@@ -68,10 +68,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessionId, subscription })
         });
-        const data = await response.json();
+        const raw = await response.text();
+        let data;
+        try {
+            data = JSON.parse(raw);
+        } catch (e) {
+            console.error("[MOBILE] Respuesta NO JSON del servidor:", raw);
+            throw new Error("Respuesta inválida del servidor");
+        }
         console.log("[MOBILE] /register-mobile respuesta:", data);
         if (data.status === "already_registered") {
             const userMessage = "Este dispositivo ya está registrado. No es necesario continuar.";
+
+            console.error("[MOBILE] Registro bloqueado. Reason:", data.reason);
+
 
             alert(userMessage);
 
@@ -122,7 +132,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     email: data.email,
                     continueUrl: data.continueUrl,
                     sessionId: data.sessionId,
-                    challengeId: data.challengeId, 
+                    challengeId: data.challengeId,
                     session_token: data.session_token
                 })
             });

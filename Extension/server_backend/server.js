@@ -496,7 +496,7 @@ app.get("/qr-session-status", async (req, res) => {
 });
 
 /**
- * 3) El móvil (register-mobile) envía la suscripción Push una vez escaneado el QR.
+ * El móvil (register-mobile) envía la suscripción Push una vez escaneado el QR.
  *    Flujo:
  *      - Verificar que QRSession existe y está pending.
  *      - Verificar que no exista Subscripcion previa (email único).
@@ -522,31 +522,33 @@ app.post('/register-mobile', async (req, res) => {
         }
 
         // Verificar que no exista suscripción previa para el mismo email
-        const existing = await Subscripcion.findOne({ email: sessionData.email });
+        const emailL = sessionData.email.toLowerCase().trim();
+        const existing = await Subscripcion.findOne({ emailL});
         if (existing) {
-            dlog("❌ Registro bloqueado: email YA existe:", sessionData.email);
+            dlog("❌ Registro bloqueado: email YA existe:", emailL);
 
             // 🔥 LIMPIAR sesión QR y temporales de registro
-            await QRSession.deleteMany({ email: sessionData.email });
-            await Temporal.deleteMany({ email: sessionData.email, challengeId: { $regex: /^REG_/ } });
+            await QRSession.deleteMany({ emailL });
+            await Temporal.deleteMany({ emailL, challengeId: { $regex: /^REG_/ } });
 
             // Si había un temporizador, cancelarlo
-            if (biometricRegTimers.has(sessionData.email)) {
-                clearTimeout(biometricRegTimers.get(sessionData.email));
-                biometricRegTimers.delete(sessionData.email);
+            if (biometricRegTimers.has(emailL)) {
+                clearTimeout(biometricRegTimers.get(emailL));
+                biometricRegTimers.delete(emailL);
             }
 
             return res.status(200).json({
                 status: "already_registered",
-                email: sessionData.email,
-                message: "Este dispositivo ya está registrado. No es necesario continuar."
+                reason: "subscription_exists",
+                email: emailL,
+                message: "Este correo ya tiene un dispositivo vinculado."
             });
         }
 
 
         // Guardar suscripción móvil definitiva
         await Subscripcion.updateOne(
-            { email: sessionData.email },
+            { email: emailL },
             { subscription },
             { upsert: true }
         );
@@ -562,48 +564,46 @@ app.post('/register-mobile', async (req, res) => {
 
         await Temporal.create({
             challengeId,
-            email: sessionData.email,
+            email: emailL,
             platform: sessionData.platform || "Unknown",
             session_token: session_token,   // mantener el nombre session_token
             status: "pending",
             action: "registro"
         });
 
-        // Programar TIMEOUT DE 1 HORA
-        const email = sessionData.email;
+        
 
-        if (biometricRegTimers.has(email)) {
-            clearTimeout(biometricRegTimers.get(email));
-            biometricRegTimers.delete(email);
+        if (biometricRegTimers.has(emailL)) {
+            clearTimeout(biometricRegTimers.get(emailL));
+            biometricRegTimers.delete(emailL);
         }
 
         const timer = setTimeout(async () => {
             try {
-                console.log(`⏰ Timeout biometría para ${email}, limpiando datos...`);
-                await Subscripcion.deleteOne({ email });
-                await Temporal.deleteMany({ email, challengeId: { $regex: /^REG_/ } });
-                await QRSession.deleteMany({ email });
+                console.log(`⏰ Timeout biometría para ${emailL}, limpiando datos...`);
+                await Subscripcion.deleteOne({ emailL });
+                await Temporal.deleteMany({ email: emailL, challengeId: { $regex: /^REG_/ } });
+                await QRSession.deleteMany({ email: emailL });
             } catch (err) {
                 console.error("❌ Error limpiando tras timeout biometría:", err);
             } finally {
-                biometricRegTimers.delete(email);
+                biometricRegTimers.delete(emailL);
             }
         }, REGISTRATION_TIMEOUT_MS);
 
-        biometricRegTimers.set(email, timer);
-
+        biometricRegTimers.set(emailL, timer);
         // Construir URL base
         const proto = req.headers["x-forwarded-proto"] || req.protocol;
         const host = req.headers["x-forwarded-host"] || req.headers.host;
         const baseUrl = `${proto}://${host}`;
 
         // URL para el siguiente paso de registro biométrico
-        const continueUrl = `${baseUrl}/mobile_client/register-confirm?email=${encodeURIComponent(email)}&session_token=${session_token}`;
+        const continueUrl = `${baseUrl}/mobile_client/register-confirm?email=${encodeURIComponent(emailL)}&session_token=${session_token}`;
 
         return res.status(200).json({
             message: "subscription_saved",
             continueUrl,
-            email: sessionData.email,
+            email: emailL,
             sessionId,
             challengeId,
             session_token
@@ -1549,7 +1549,8 @@ app.get('/mobile_client/auth-confirm', async (req, res) => {
 
     } catch (err) {
         console.error("❌ [LOGIN][AUTH-CONFIRM] Error:", err);
-        return res.status(500).send("Error interno.");
+        return res.status(500).json({ error: "error interno" });
+    }
     }
 });
 
@@ -1627,7 +1628,8 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
 
     } catch (err) {
         console.error("❌ [LOGIN][AUTH-CONTINUE] Error:", err);
-        return res.status(500).send("Error interno");
+        return res.status(500).json({ error: "error interno" });
+    }
     }
 });
 
@@ -1984,6 +1986,19 @@ app.use((err, req, res, next) => {
 });
 
 app.use((req, res, next) => {
+    const oldSend = res.send;
+    res.send = function (body) {
+        if (typeof body === "string" && body.includes("<!DOCTYPE")) {
+            console.warn("⚠️ HTML DEVUELTO EN:", req.method, req.originalUrl);
+            console.warn(body.slice(0, 300)); // primeras líneas
+        }
+        return oldSend.call(this, body);
+    };
+    next();
+});
+
+
+app.use((req, res, next) => {
     res.on("finish", () => {
         if (
             res.getHeader("content-type") &&
@@ -1994,6 +2009,21 @@ app.use((req, res, next) => {
     });
     next();
 });
+// 🔥 CATCH-ALL PARA APIs: nunca devolver HTML
+app.use((req, res, next) => {
+    if (
+        req.path.startsWith("/register-mobile") ||
+        req.path.startsWith("/qr-session") ||
+        req.path.startsWith("/send-test-push")
+    ) {
+        return res.status(404).json({
+            error: "api_not_found",
+            path: req.originalUrl
+        });
+    }
+    next();
+});
+
 
 
 //===========================================================
