@@ -1,10 +1,10 @@
-// sw_v55.js — Service Worker para el cliente móvil de Psy-Password
+// sw_v56s.js — Service Worker para el cliente móvil de Psy-Password
 // Cambia el nombre del archivo o añade este comentario para forzar actualización
 
 console.log("[SW] Service Worker CARGADO y EJECUTADO.");
 
 
-const SERVER_BASE_URL = 'https://knit-newport-cdt-pan.trycloudflare.com';
+const SERVER_BASE_URL = 'https://genia-api-extension-avbke7bhgea4bngk.eastus2-01.azurewebsites.net';
 
 self.addEventListener("install", (event) => {
     console.log("[SW] INSTALL ejecutado");
