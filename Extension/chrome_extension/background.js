@@ -2,7 +2,7 @@
 // CONFIG
 // ========================================================
 
-const SERVER_BASE_URL = 'https://knit-newport-cdt-pan.trycloudflare.com';
+const SERVER_BASE_URL = 'genia-api-extension-avbke7bhgea4bngk.eastus2-01.azurewebsites.net';
 const EXT_CLIENT_KEY = "9afe2270278c6647dc54094103a7e7605d61f9b4c0642baf59559453d41c4c94";
 
 const KM_URL = "http://127.0.0.1:8200";
