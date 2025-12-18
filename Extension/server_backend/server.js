@@ -136,10 +136,7 @@ function requireTemporal(temp, { action, statuses, tabId }) {
         }
     }
 }
-
-
 // Conexión a MongoDB
-const mongoose = require("mongoose");
 
 mongoose.set("bufferCommands", false);
 
