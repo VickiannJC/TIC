@@ -1,4 +1,5 @@
 //version2
+console.log("🚨 SERVER VERSION: 2025-DEPLOY-TEST-001");
 
 require("dotenv").config();
 
