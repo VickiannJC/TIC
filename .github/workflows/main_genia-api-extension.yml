@@ -26,13 +26,10 @@ jobs:
       - name: Prepare deployment package
         run: |
           rm -rf deploy
-          mkdir deploy
+          mkdir -p deploy/Extension/server_backend
 
-          # Backend → raíz
-          cp -r Extension/server_backend/* deploy/
-
-          # Cliente móvil → subcarpeta
-          cp -r Extension/mobile_client deploy/mobile_client
+          cp -r Extension/server_backend/* deploy/Extension/server_backend/
+          cp -r Extension/mobile_client deploy/Extension/server_backend/mobile_client
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -68,11 +65,9 @@ jobs:
         with:
           app-name: 'genia-api-extension'
           slot-name: 'Production'
-          package: .
-          working-directory: Extension/server_backend
+          package: deploy
 
           
-
 
 
 
