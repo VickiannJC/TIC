@@ -28,6 +28,11 @@ const config = require('./config');
 
 
 const app = express();
+app.use(
+  "/mobile_client",
+  express.static(path.join(__dirname, "mobile_client"))
+);
+
 app.use((req, res, next) => {
     console.log(`🔔 LLEGÓ UNA PETICIÓN: ${req.method} ${req.url}`);
     next();
@@ -299,13 +304,7 @@ async function logSecurityEvent(type, { email, ip, path, userAgent, meta } = {})
     }
 }
 
-const path = require("path");
 
-// 🔥 Servir cliente móvil como estático
-app.use(
-  "/mobile_client",
-  express.static(path.join(__dirname, "mobile_client"))
-);
 // Endpoint de salud para MongoDB
 app.get("/mongo-health", async (req, res) => {
     try {
