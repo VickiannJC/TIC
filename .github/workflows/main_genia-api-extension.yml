@@ -27,7 +27,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: Extension/server_backend
+          path: |
+            Extension/server_backend
+            Extension/mobile_client
+            
+          
 
   deploy:
     runs-on: ubuntu-latest
@@ -59,4 +63,5 @@ jobs:
           working-directory: Extension/server_backend
 
           
+
 
