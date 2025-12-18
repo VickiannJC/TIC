@@ -2103,17 +2103,6 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use((req, res, next) => {
-  if (req.method === "POST" && req.path.includes("register-mobile")) {
-    console.log("🔥 FETCH REAL ORIGEN:", {
-      path: req.path,
-      referer: req.headers.referer,
-      origin: req.headers.origin,
-      userAgent: req.headers["user-agent"]
-    });
-  }
-  next();
-});
 
 
 
