@@ -28,10 +28,13 @@ const config = require('./config');
 
 
 const app = express();
-app.use(
-  "/mobile_client",
-  express.static(path.join(__dirname, "mobile_client"))
-);
+app.use("/mobile_client", express.static(
+  path.join(__dirname, "mobile_client"),
+  {
+    index: false,
+    fallthrough: true
+  }
+));
 
 app.use((req, res, next) => {
     console.log(`🔔 LLEGÓ UNA PETICIÓN: ${req.method} ${req.url}`);
@@ -1975,6 +1978,11 @@ app.post("/finalize-km-session", clientAuth, async (req, res) => {
 //===========================================================
 
 app.use((err, req, res, next) => {
+    // 🔥 NO tocar archivos estáticos
+    if (req.path.startsWith("/mobile_client/")) {
+        return next(err);
+    }
+
     console.error("🔥 ERROR REAL:", {
         message: err.message,
         stack: err.stack,
@@ -1982,21 +1990,23 @@ app.use((err, req, res, next) => {
         method: req.method,
         body: req.body
     });
-    // Si el request viene de la extensión → responder JSON
-    if (req.headers["content-type"] === "application/json" ||
-        req.url.includes("/generar-qr-session") ||
-        req.url.includes("/request-auth-login") ||
-        req.url.includes("/register-mobile") ||
-        req.url.includes("/qr-session-status") ||
-        req.url.includes("/check-password-status")) {
 
+    // APIs → JSON
+    if (
+        req.is("application/json") ||
+        req.path.startsWith("/generar-qr-session") ||
+        req.path.startsWith("/request-auth-login") ||
+        req.path.startsWith("/register-mobile") ||
+        req.path.startsWith("/qr-session-status") ||
+        req.path.startsWith("/check-password-status")
+    ) {
         return res.status(500).json({
             error: "server_error",
             message: "Ocurrió un error inesperado. Intenta nuevamente."
         });
     }
 
-    // Si viene del navegador móvil → responder HTML amigable
+    // Fallback genérico
     return res.status(err.statusCode || 500).json({
         error: "internal_server_error",
         message: err.message || "Error interno del servidor",
@@ -2004,12 +2014,18 @@ app.use((err, req, res, next) => {
     });
 });
 
+
 app.use((req, res, next) => {
+    // 🔥 NO tocar estáticos
+    if (req.path.startsWith("/mobile_client/")) {
+        return next();
+    }
+
     const oldSend = res.send;
     res.send = function (body) {
         if (typeof body === "string" && body.includes("<!DOCTYPE")) {
             console.warn("⚠️ HTML DEVUELTO EN:", req.method, req.originalUrl);
-            console.warn(body.slice(0, 300)); // primeras líneas
+            console.warn(body.slice(0, 300));
         }
         return oldSend.call(this, body);
     };
@@ -2017,43 +2033,60 @@ app.use((req, res, next) => {
 });
 
 
+
 app.use((req, res, next) => {
+    //  NO tocar estáticos
+    if (req.path.startsWith("/mobile_client/")) {
+        return next();
+    }
+
     res.on("finish", () => {
-        if (
-            res.getHeader("content-type") &&
-            res.getHeader("content-type").includes("text/html")
-        ) {
+        const ct = res.getHeader("content-type");
+        if (ct && ct.includes("text/html")) {
             console.warn("⚠️ RESPUESTA HTML enviada a:", req.method, req.originalUrl);
         }
     });
     next();
 });
-// 🔥 CATCH-ALL PARA APIs: nunca devolver HTML
+
+//  CATCH-ALL PARA APIs: nunca devolver HTML
 app.use((req, res, next) => {
+    // 🔥 Nunca interceptar estáticos
+    if (req.path.startsWith("/mobile_client/")) {
+        return next();
+    }
+
     if (
-        req.path.startsWith("/register-mobile") ||
+        req.path === "/register-mobile" ||
         req.path.startsWith("/qr-session") ||
-        req.path.startsWith("/send-test-push")
+        req.path === "/send-test-push"
     ) {
         return res.status(404).json({
             error: "api_not_found",
             path: req.originalUrl
         });
     }
+
     next();
 });
 
-app.post('*', (req, res, next) => {
-    if (req.path.includes('register-mobile')) {
+
+app.post("*", (req, res, next) => {
+    if (req.path.startsWith("/mobile_client/")) {
+        return next();
+    }
+
+    if (req.path.includes("register-mobile")) {
         console.log("🔥 FETCH REAL ORIGEN:", {
             path: req.path,
             referer: req.headers.referer,
             origin: req.headers.origin,
-            userAgent: req.headers['user-agent']
+            userAgent: req.headers["user-agent"]
         });
     }
     next();
 });
+
 
 
 
