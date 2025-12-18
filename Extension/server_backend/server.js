@@ -72,7 +72,7 @@ app.use((req, res, next) => {
     console.log(`🔔 LLEGÓ UNA PETICIÓN: ${req.method} ${req.url}`);
     next();
 });
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 const EXT_CLIENT_KEY = process.env.EXT_CLIENT_KEY; // clave compartida con la extensión
 const KM_PLUGIN_REG_SECRET = process.env.KM_PLUGIN_REG_SECRET; // secreto  server↔KM
@@ -163,6 +163,10 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+app.get("/", (req, res) => {
+  res.send("OK");
+})
 
 // ===========================================================
 //  MIDDLEWARE: AUTENTICACIÓN DEL CLIENTE (EXTENSIÓN)
