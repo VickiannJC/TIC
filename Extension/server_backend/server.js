@@ -2104,7 +2104,7 @@ app.use((req, res, next) => {
 });
 
 
-app.post("*", (req, res, next) => {
+app.post((req, res, next) => {
     if (req.path.startsWith("/mobile_client/")) {
         return next();
     }
