@@ -1970,13 +1970,6 @@ app.post("/finalize-km-session", clientAuth, async (req, res) => {
 });
 
 
-
-//===========================================================
-//  ARCHIVOS ESTÁTICOS DEL CLIENTE MÓVIL
-//===========================================================
-
-app.use('/mobile_client', express.static(path.join(__dirname, '..', 'mobile_client')));
-
 //===========================================================
 //  MANEJO GLOBAL DE ERRORES
 //===========================================================
