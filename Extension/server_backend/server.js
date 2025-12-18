@@ -2103,21 +2103,16 @@ app.use((req, res, next) => {
     next();
 });
 
-
-app.post((req, res, next) => {
-    if (req.path.startsWith("/mobile_client/")) {
-        return next();
-    }
-
-    if (req.path.includes("register-mobile")) {
-        console.log("🔥 FETCH REAL ORIGEN:", {
-            path: req.path,
-            referer: req.headers.referer,
-            origin: req.headers.origin,
-            userAgent: req.headers["user-agent"]
-        });
-    }
-    next();
+app.use((req, res, next) => {
+  if (req.method === "POST" && req.path.includes("register-mobile")) {
+    console.log("🔥 FETCH REAL ORIGEN:", {
+      path: req.path,
+      referer: req.headers.referer,
+      origin: req.headers.origin,
+      userAgent: req.headers["user-agent"]
+    });
+  }
+  next();
 });
 
 
