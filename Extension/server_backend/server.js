@@ -54,7 +54,7 @@ app.get("/mobile_client/:file", (req, res) => {
         return res.status(404).send("File not allowed");
     }
 
-    const absPath = path.join(__dirname, "..", "mobile_client", file);
+    const absPath = path.join(__dirname, "mobile_client", file);
 
     res.sendFile(absPath, err => {
         if (err) {
