@@ -17,6 +17,7 @@ from typing import Optional
 import uuid, os, json, base64
 import hmac, hashlib
 from config import K_DB_PASS
+from flask import Flask
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -41,6 +42,10 @@ def verify_reg_token(payload: dict, reg_token: str) -> bool:
         hashlib.sha256
     ).hexdigest()
     return hmac.compare_digest(expected, reg_token)
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 @app.post("/store_encrypted_item")
 async def store_encrypted_item(req: StoreEncryptedItemRequest):
