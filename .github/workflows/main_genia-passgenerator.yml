@@ -70,6 +70,13 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9DE6E60300D9481FB974B25F481779E9 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_8FC745E28AAD465AA5142BA39AE4C6A8 }}
 
+      - name: Debug structure
+        run: |
+         pwd
+         ls -la
+         find . -maxdepth 3
+
+
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
