@@ -10,6 +10,7 @@ on:
       - main
     paths: 
       - password-generator/**
+      - .github/workflows/main_genia-passgenerator.yml
   workflow_dispatch:
 
 jobs:
