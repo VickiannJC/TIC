@@ -47,35 +47,11 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 
-app.get("/mobile_client/:file", (req, res) => {
-    const file = req.params.file;
+app.use(
+  "/mobile_client",
+  express.static(path.join(__dirname, "mobile_client"))
+);
 
-    const allowed = [
-        "register-mobile.html",
-        "mobile-register.v3.js",
-        "sw3.js",
-        "check.png",
-        "cancel.png",
-        "README"
-    ];
-
-    if (!allowed.includes(file)) {
-        return res.status(404).send("File not allowed");
-    }
-
-    const absPath = path.join(__dirname, "mobile_client", file);
-
-    res.sendFile(absPath, err => {
-        if (err) {
-            console.error("❌ Error sirviendo archivo móvil:", {
-                file,
-                absPath,
-                err
-            });
-            res.status(404).send("File not found");
-        }
-    });
-});
 
 app.use((req, res, next) => {
     console.log(`🔔 LLEGÓ UNA PETICIÓN: ${req.method} ${req.url}`);
