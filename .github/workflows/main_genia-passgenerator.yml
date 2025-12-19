@@ -83,6 +83,6 @@ jobs:
         with:
           app-name: 'genia-passGenerator'
           slot-name: 'Production'
-          package: password-generator
+          package: .
 
           
