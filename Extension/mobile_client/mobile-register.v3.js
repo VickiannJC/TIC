@@ -56,7 +56,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Registrar Service Worker -> archivo sw.js
         console.log("[MOBILE] Registrando Service Worker...");
         statusMessage.textContent = 'Registrando Service Worker...';
-        const registration = await navigator.serviceWorker.register(`/mobile_client/sw3.js`);
+        const registration = await navigator.serviceWorker.register(`${SERVER_BASE_URL}/mobile_client/sw3.js`);
         console.log("[MOBILE] Service Worker registrado:", registration);
 
         //Obtener clave VAPID pública:
