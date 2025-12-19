@@ -48,8 +48,8 @@ app.use(express.urlencoded({ extended: true }));
 
 
 app.use(
-  "/mobile_client",
-  express.static(path.join(__dirname, "mobile_client"))
+    "/mobile_client",
+    express.static(path.join(__dirname, "mobile_client"))
 );
 
 
@@ -142,7 +142,7 @@ mongoose.connection.on("error", err => {
 
 
 app.get("/", (req, res) => {
-  res.send("OK");
+    res.send("OK");
 })
 
 // ===========================================================
@@ -354,18 +354,21 @@ app.post("/generar-qr-session", clientAuth, async (req, res) => {
         }
 
         // Limpiar sesiones QR previas de este email
-        await QRSession.deleteMany({ email, estado: "pending" });
-        dlog(`🧹 Limpieza previa de QRSession para: ${email}`);
-
-        // Crear nuevo ID de sesión
-        const sessionId = `SESS_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
-
-        await QRSession.create({
-            sessionId,
+        let session = await QRSession.findOne({
             email,
-            platform,
             estado: "pending"
         });
+
+        if (!session) {
+            session = await QRSession.create({
+                sessionId: `SESS_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+                email,
+                platform,
+                estado: "pending"
+            });
+        }
+
+        const sessionId = session.sessionId;
 
         // Construir URL base dinámica (ngrok/producción/localhost)
         const proto = req.headers["x-forwarded-proto"] || req.protocol;
