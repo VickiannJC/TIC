@@ -7,10 +7,12 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
+    paths: 
       - Extension/mobile_client/**
       - Extension/server_backend/**
       - .github/workflows/main_genia-api-extension.yml
+  workflow_dispatch:
+  
 jobs:
   build:
     runs-on: ubuntu-latest
