@@ -41,7 +41,7 @@ jobs:
         with:
           name: python-app
           path: |
-            password-generator/
+            password-generator/*
             !password-generator/antenv/
 
       # 🚫 Opting Out of Oryx Build
