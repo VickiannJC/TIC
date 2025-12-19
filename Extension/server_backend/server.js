@@ -37,6 +37,15 @@ const app = express();
   }
 ));**/
 
+// Middlewares
+app.use(cors({
+    origin: "*",
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Client-Key"]
+}));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));
+
 
 app.get("/mobile_client/:file", (req, res) => {
     const file = req.params.file;
@@ -155,14 +164,6 @@ mongoose.connection.on("error", err => {
 
 
 
-// Middlewares
-app.use(cors({
-    origin: "*",
-    methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Client-Key"]
-}));
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true }));
 
 app.get("/", (req, res) => {
   res.send("OK");
