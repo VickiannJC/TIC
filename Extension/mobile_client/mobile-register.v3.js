@@ -73,7 +73,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Enviar suscripción al servidor 
         statusMessage.textContent = 'Vinculando dispositivo...';
-        const response = await fetch(`${API_BASE}/register-mobile`, {
+        const response = await fetch(`${SERVER_BASE_URL}/register-mobile`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessionId, subscription })
