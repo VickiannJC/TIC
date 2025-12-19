@@ -11,7 +11,6 @@ on:
       - Extension/mobile_client/**
       - Extension/server_backend/**
       - .github/workflows/main_genia-api-extension.yml
-
 jobs:
   build:
     runs-on: ubuntu-latest
