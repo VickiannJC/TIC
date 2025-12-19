@@ -7,9 +7,6 @@ const SERVER_BASE_URL = 'https://genia-api-extension-avbke7bhgea4bngk.eastus2-01
 const API_BASE = window.location.origin;
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // --- FIX: evitar doble ejecución si el usuario abre varias veces ---
-    if (window.__psy_registering) return;
-    window.__psy_registering = true;
 
     // Elementos del DOM
     const statusEl = document.getElementById('status');
@@ -24,47 +21,59 @@ document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const sessionId = urlParams.get('sessionId');
 
+    try{
+
     if (!sessionId) {
         showError('Error: No se encontró código de sesión en la URL');
         return;
     }
 
-    // Iniciar proceso de vinculación
+       // Iniciar proceso de vinculación
     statusMessage.textContent = 'Iniciando proceso de vinculación...';
+    const PERMISSION_GUARD_KEY = `psy_permission_requested_${sessionId}`;
 
-    try {
-        // 1. Verificar compatibilidad
-        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-            throw new Error('Tu navegador no soporta Service Workers o Notificaciones Push');
-        }
+    if (sessionStorage.getItem(PERMISSION_GUARD_KEY)) {
+        console.log("[MOBILE] Permiso ya solicitado para esta sessionId");
+    } else {
+        sessionStorage.setItem(PERMISSION_GUARD_KEY, "1");
+    }
 
-        // 2. Registrar Service Worker -> archivo sw.js
-        statusMessage.textContent = 'Registrando Service Worker...';
-        // NOTA: El path debe ser relativo a la raíz del cliente móvil
-        const registration = await navigator.serviceWorker.register(`${location.origin}/mobile_client/sw3.js`);
-
-
-        // 3. Solicitar permisos para recibir las notificaciones push 
+    // Solicitar permisos para recibir las notificaciones push 
         statusMessage.textContent = 'Solicitando permisos...';
         const permission = await Notification.requestPermission();
 
         if (permission !== 'granted') {
+            showError("Debes permitir notificaciones para continuar.");
             throw new Error('Permisos para notificaciones no concedidos');
         }
+
+ 
+        // Verificar compatibilidad
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+            throw new Error('Tu navegador no soporta Service Workers o Notificaciones Push');
+        }
+
+        // Registrar Service Worker -> archivo sw.js
+        console.log("[MOBILE] Registrando Service Worker...");
+        statusMessage.textContent = 'Registrando Service Worker...';
+        const registration = await navigator.serviceWorker.register(`${location.origin}/mobile_client/sw3.js`);
+        console.log("[MOBILE] Service Worker registrado:", registration);
 
         //Obtener clave VAPID pública:
         const VAPID_KEY = 'BHp2vU13C4v9lkA3TiCeDjdrTKx-pjOJKU9danM81efQiPD_6udB7w42xt6DZnz2bAjgf8mdjz-d_Qv7ePkVDOM';
 
         //Suscribir a notificaciones push
+        console.log("[MOBILE] Suscribiéndose a Push...");
         statusMessage.textContent = 'Generando suscripción push...';
         const subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(VAPID_KEY)
         });
+        console.log("[MOBILE] Suscripción obtenida:", subscription);
 
-        // 6. Enviar suscripción al servidor (Endpoint crucial)
+        // Enviar suscripción al servidor 
         statusMessage.textContent = 'Vinculando dispositivo...';
-        const response = await fetch(`${API_BASE}/register-mobile` , {
+        const response = await fetch(`${API_BASE}/register-mobile`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessionId, subscription })
