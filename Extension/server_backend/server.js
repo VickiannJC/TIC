@@ -392,10 +392,10 @@ app.post("/generar-qr-session", clientAuth, async (req, res) => {
     const sessionId = session.sessionId;
 
     // URL base PÚBLICA (NO usar headers dinámicos)
-    const baseUrl = process.env.PUBLIC_BASE_URL;
+    const baseUrl = process.env.SERVER_BASE_URL;
 
     if (!baseUrl) {
-      throw new Error("PUBLIC_BASE_URL no está configurada");
+      throw new Error("SERVER_BASE_URL no está configurada");
     }
 
     // URL final que irá en el QR
@@ -670,9 +670,9 @@ app.post("/register-mobile", async (req, res) => {
 
     biometricRegTimers.set(email, timer);
 
-    const baseUrl = process.env.PUBLIC_BASE_URL;
+    const baseUrl = process.env.SERVER_BASE_URL;
     if (!baseUrl) {
-      throw new Error("PUBLIC_BASE_URL no configurada");
+      throw new Error("SERVER_BASE_URL no configurada");
     }
 
     const continueUrl =
