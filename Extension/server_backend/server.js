@@ -341,67 +341,88 @@ app.get("/mongo-health", async (req, res) => {
  *    - La extensión mostrará este QR y lo podrá regenerar cada 60s.
  */
 app.post("/generar-qr-session", clientAuth, async (req, res) => {
+  try {
+    dlog(" /generar-qr-session BODY:", req.body);
 
-    dlog("📥 /generar-qr-session BODY recibido:", req.body);
-    dlog("Headers:", req.headers);
-    try {
+    const { email, platform } = req.body;
 
-
-        const { email, platform } = req.body;
-
-        if (!email || !platform) {
-            return res.status(400).json({ error: "Email y plataforma requeridos" });
-        }
-
-        // Limpiar sesiones QR previas de este email
-        let session = await QRSession.findOne({
-            email,
-            estado: "pending"
-        });
-
-        if (!session) {
-            session = await QRSession.create({
-                sessionId: `SESS_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-                email,
-                platform,
-                estado: "pending"
-            });
-        }
-
-        const sessionId = session.sessionId;
-
-        // Construir URL base dinámica (ngrok/producción/localhost)
-        const proto = req.headers["x-forwarded-proto"] || req.protocol;
-        const host = req.headers["x-forwarded-host"] || req.headers.host;
-        const baseUrl = `${proto}://${host}`;
-
-        // URL de registro móvil (cliente web móvil)
-        const registerUrl = `${baseUrl}/mobile_client/register-mobile.html?sessionId=${sessionId}`;
-        dlog("URL generada para el QR:", registerUrl);
-        // Construir QR como DataURL
-        const qrDataUrl = await qrcode.toDataURL(registerUrl);
-        dlog("QR generado correctamente");
-
-
-
-
-        return res.json({
-            qr: qrDataUrl,
-            sessionId
-        });
-
-    } catch (err) {
-        console.error("❌ ERROR detallado en /generar-qr-session:", err.stack || err, {
-            body: req.body,
-            headers: req.headers
-        });
-
-        return res.status(500).json({
-            error: "server_error",
-            detail: err.message
-        });
+    if (!email || !platform) {
+      return res.status(400).json({
+        error: "invalid_request",
+        message: "Email y plataforma requeridos"
+      });
     }
+
+    // Configuración de expiración del QR
+    const EXPIRATION_MINUTES = 5;
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + EXPIRATION_MINUTES * 60 * 1000);
+
+    // Buscar sesión pendiente válida existente
+    let session = await QRSession.findOne({
+      email,
+      estado: "pending",
+      expiresAt: { $gt: now }
+    });
+
+    // Crear nueva sesión solo si no existe una válida
+    if (!session) {
+      session = await QRSession.create({
+        sessionId: `SESS_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        email,
+        platform,
+        estado: "pending",
+        createdAt: now,
+        expiresAt
+      });
+
+      dlog("Nueva QRSession creada:", {
+        sessionId: session.sessionId,
+        email,
+        expiresAt
+      });
+    } else {
+      dlog(" Reutilizando QRSession existente:", {
+        sessionId: session.sessionId,
+        email,
+        expiresAt: session.expiresAt
+      });
+    }
+
+    const sessionId = session.sessionId;
+
+    // URL base PÚBLICA (NO usar headers dinámicos)
+    const baseUrl = process.env.PUBLIC_BASE_URL;
+
+    if (!baseUrl) {
+      throw new Error("PUBLIC_BASE_URL no está configurada");
+    }
+
+    // URL final que irá en el QR
+    const registerUrl =
+      `${baseUrl}/mobile_client/register-mobile.html?sessionId=${sessionId}`;
+
+    dlog("URL QR generada:", registerUrl);
+
+    // Generar QR como DataURL
+    const qrDataUrl = await qrcode.toDataURL(registerUrl);
+
+    return res.json({
+      qr: qrDataUrl,
+      sessionId,
+      expiresAt
+    });
+
+  } catch (err) {
+    console.error("❌ ERROR en /generar-qr-session:", err);
+
+    return res.status(500).json({
+      error: "server_error",
+      message: err.message
+    });
+  }
 });
+
 
 app.post("/cancel-qr-session", clientAuth, async (req, res) => {
     console.log("🔥 cancel-qr-session llamado desde:", {
@@ -546,120 +567,137 @@ app.get("/qr-session-status", async (req, res) => {
  * 
  */
 
-app.post('/register-mobile', async (req, res) => {
+app.post("/register-mobile", async (req, res) => {
+  try {
     const { sessionId, subscription } = req.body;
 
-    dlog("📨 /register-mobile: Vinculando dispositivo móvil...");
+    dlog(" /register-mobile BODY:", { sessionId });
 
-    try {
-        const sessionData = await QRSession.findOne({ sessionId });
-        if (req.path !== '/register-mobile') {
-            console.error("🚨 RUTA MAL FORMADA:", {
-                path: req.path,
-                originalUrl: req.originalUrl
-            });
-            return res.status(400).json({ error: 'invalid_path' });
-        }
-        if (!sessionData) {
-            return res.status(404).json({
-                error: "session_not_found",
-                message: "Este QR ya expiró o no existe."
-            });
-        }
+    if (!sessionId || !subscription) {
+      return res.status(400).json({
+        error: "invalid_request",
+        message: "sessionId y subscription son requeridos"
+      });
+    }
 
-        // Verificar que no exista suscripción previa para el mismo email
-        const email = sessionData.email.toLowerCase().trim();
-        const existing = await Subscripcion.findOne({ email: email });
-        if (existing) {
-            dlog("❌ Registro bloqueado: email YA existe:", email);
+    const now = new Date();
 
-            // 🔥 LIMPIAR sesión QR y temporales de registro
-            await QRSession.deleteMany({ email: email });
-            await Temporal.deleteMany({ email: email, challengeId: { $regex: /^REG_/ } });
+    // Buscar sesión QR válida
+    const sessionData = await QRSession.findOne({
+      sessionId,
+      estado: "pending",
+      expiresAt: { $gt: now }
+    });
 
-            // Si había un temporizador, cancelarlo
-            if (biometricRegTimers.has(email)) {
-                clearTimeout(biometricRegTimers.get(email));
-                biometricRegTimers.delete(email);
-            }
+    if (!sessionData) {
+      return res.status(404).json({
+        error: "session_not_found",
+        message: "Este QR ya expiró, fue usado o no existe."
+      });
+    }
 
-            return res.status(200).json({
-                status: "already_registered",
-                reason: "subscription_exists",
-                email: email,
-                message: "Este correo ya tiene un dispositivo vinculado."
-            });
-        }
+    const email = sessionData.email.toLowerCase().trim();
 
+    //  Bloquear si ya existe suscripción
+    const existing = await Subscripcion.findOne({ email });
 
-        // Guardar suscripción móvil definitiva
-        await Subscripcion.updateOne(
-            { email: email },
-            { subscription },
-            { upsert: true }
+    if (existing) {
+      dlog("⚠️ Email ya registrado:", email);
+
+      // Marcar sesion como cancelada si ya existe registro
+      sessionData.estado = "cancelled";
+      await sessionData.save();
+
+      return res.status(200).json({
+        status: "already_registered",
+        email,
+        message: "Este correo ya tiene un dispositivo vinculado."
+      });
+    }
+
+    // Guardar subscripción
+    await Subscripcion.updateOne(
+      { email },
+      { subscription },
+      { upsert: true }
+    );
+
+    // Marcar QR como confirmado
+    sessionData.estado = "confirmed";
+    sessionData.subscription = subscription;
+    await sessionData.save();
+
+    // Crear desafío temporal 
+    const challengeId = "REG_" + Math.random().toString(36).substring(2, 9);
+    const session_token = generateToken();
+
+    await Temporal.create({
+      challengeId,
+      email,
+      platform: sessionData.platform || "Unknown",
+      session_token,
+      status: "pending",
+      action: "registro"
+    });
+
+    // Timer 
+    if (biometricRegTimers.has(email)) {
+      clearTimeout(biometricRegTimers.get(email));
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        console.log(` Timeout biometría para ${email}`);
+
+        await Subscripcion.deleteOne({ email });
+        await Temporal.deleteMany({
+          email,
+          challengeId: { $regex: /^REG_/ }
+        });
+
+        // marcar como expirado cuando aplique
+        await QRSession.updateMany(
+          { email, estado: { $in: ["pending", "confirmed"] } },
+          { $set: { estado: "expired" } }
         );
 
-        // Marcar la sesión QR como confirmada
-        sessionData.subscription = subscription;
-        sessionData.estado = "confirmed";
-        await sessionData.save();
+      } catch (err) {
+        console.error("❌ Error en cleanup biometría:", err);
+      } finally {
+        biometricRegTimers.delete(email);
+      }
+    }, REGISTRATION_TIMEOUT_MS);
 
-        // Crear entrada Temporal para REGISTRO (protege el canal con biometría)
-        const challengeId = "REG_" + Math.random().toString(36).substring(2, 9);
-        const session_token = generateToken();
+    biometricRegTimers.set(email, timer);
 
-        await Temporal.create({
-            challengeId,
-            email: email,
-            platform: sessionData.platform || "Unknown",
-            session_token: session_token,   // mantener el nombre session_token
-            status: "pending",
-            action: "registro"
-        });
-
-
-
-        if (biometricRegTimers.has(email)) {
-            clearTimeout(biometricRegTimers.get(email));
-            biometricRegTimers.delete(email);
-        }
-
-        const timer = setTimeout(async () => {
-            try {
-                console.log(`⏰ Timeout biometría para ${email}, limpiando datos...`);
-                await Subscripcion.deleteOne({ email: email });
-                await Temporal.deleteMany({ email: email, challengeId: { $regex: /^REG_/ } });
-                await QRSession.deleteMany({ email: email });
-            } catch (err) {
-                console.error("❌ Error limpiando tras timeout biometría:", err);
-            } finally {
-                biometricRegTimers.delete(email);
-            }
-        }, REGISTRATION_TIMEOUT_MS);
-
-        biometricRegTimers.set(email, timer);
-        // Construir URL base
-        const proto = req.headers["x-forwarded-proto"] || req.protocol;
-        const host = req.headers["x-forwarded-host"] || req.headers.host;
-        const baseUrl = `${proto}://${host}`;
-
-        // URL para el siguiente paso de registro biométrico
-        const continueUrl = `${baseUrl}/mobile_client/register-confirm?email=${encodeURIComponent(email)}&session_token=${session_token}`;
-
-        return res.status(200).json({
-            message: "subscription_saved",
-            continueUrl,
-            email: email,
-            sessionId,
-            challengeId,
-            session_token
-        });
-
-    } catch (err) {
-        console.error("❌ Error en /register-mobile:", err);
-        return res.status(500).json({ error: "server_error" });
+    const baseUrl = process.env.PUBLIC_BASE_URL;
+    if (!baseUrl) {
+      throw new Error("PUBLIC_BASE_URL no configurada");
     }
+
+    const continueUrl =
+      `${baseUrl}/mobile_client/register-confirm` +
+      `?email=${encodeURIComponent(email)}` +
+      `&session_token=${session_token}`;
+
+    return res.status(200).json({
+      message: "subscription_saved",
+      continueUrl,
+      email,
+      sessionId,
+      challengeId,
+      session_token
+    });
+
+  } catch (err) {
+    console.error("❌ Error en /register-mobile:", err);
+    return res.status(500).json({
+      error: "server_error",
+      message: err.message
+    });
+  }
 });
+
 
 /**
  * Página de registro estético para el móvil.
