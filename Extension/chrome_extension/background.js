@@ -5,7 +5,7 @@
 const SERVER_BASE_URL = 'https://genia-api-extension-avbke7bhgea4bngk.eastus2-01.azurewebsites.net';
 const EXT_CLIENT_KEY = "9afe2270278c6647dc54094103a7e7605d61f9b4c0642baf59559453d41c4c94";
 
-const KM_URL = "http://127.0.0.1:8200";
+const KM_URL = "https://genia-keymanager-dyethzazhfgrhsc6.eastus2-01.azurewebsites.net";
 
 // Poll each interval to check server state (QR + login)
 const POLLING_INTERVAL = 10000; //10 segundos
