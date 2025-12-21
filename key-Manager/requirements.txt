@@ -4,4 +4,5 @@ motor
 cryptography
 argon2-cffi
 python-dotenv
-
+gunicorn
+httpx
