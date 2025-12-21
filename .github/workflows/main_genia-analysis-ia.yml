@@ -71,11 +71,18 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_2C719F4AA6ED4E339D66D3791E311BDE }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_20C5ABB4FA29472F865A6A148EA1272D }}
 
+      - name: Debug workspace
+        run: |
+           echo "PWD=$(pwd)"
+           ls -la
+           echo "TREE:"
+           find . -maxdepth 2 -type f
+           
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
           app-name: 'genia-analysis-ia'
           slot-name: 'Production'
-          package: .
+          package: python-app
           
