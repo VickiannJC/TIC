@@ -42,7 +42,7 @@ jobs:
         with:
           name: python-app
           path: |
-            psy_analizer/*
+            psy_analizer
             !psy_analizer/antenv/
 
       # 🚫 Opting Out of Oryx Build
@@ -77,7 +77,7 @@ jobs:
            ls -la
            echo "TREE:"
            find . -maxdepth 2 -type f
-           
+
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
