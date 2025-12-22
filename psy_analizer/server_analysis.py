@@ -69,6 +69,10 @@ async def log_requests(request: Request, call_next):
     print(f" {request.method} {request.url.path}")
     return await call_next(request)
 
+@app.get("/api/biometric-registration")
+def biometric_probe():
+    return {"status": "ignored"}
+
 
 """
 Registro
