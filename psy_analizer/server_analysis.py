@@ -65,6 +65,10 @@ def get_real_client_ip(request: Request) -> str:
 @app.get("/health")
 def health():
     return {"status": "ok", "ts": datetime.utcnow().isoformat()}
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    print(f" {request.method} {request.url.path}")
+    return await call_next(request)
 
 
 """
@@ -79,6 +83,7 @@ class BioRegistrationPayload(BaseModel):
 # Endpoint para recibir datos desde Node después de BIOMETRÍA
 @app.post("/api/biometric-registration")
 async def biometric_registration(data: BioRegistrationPayload):
+    print("🔥 POST biometric-registration ejecutado")
     """
     Recibe datos del server Node (backend central) después de que BIOMETRÍA
     completa el registro y provee la cadena de valores psicológicos.
