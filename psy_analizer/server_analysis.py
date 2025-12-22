@@ -1,6 +1,8 @@
 # El backend d(Node.js) de Extensión 
 # llama a este endpoint: /api/biometric-registration
 # Recibimos los datos de Extensión que recibio de Biometria
+print("🚀 server_analysis import started")
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -17,14 +19,25 @@ from guardar_analisis import col as psy_col
 from guardar_analisis import buscar_usuario_por_hmac
 import requests
 
-GEN_SECRET = os.environ["GEN_HMAC_SECRET"]
-GENERATION_SERVER_URL = os.environ["GEN_SERVER_URL"]
+GEN_SECRET = os.environ.get("GEN_HMAC_SECRET")
+GENERATION_SERVER_URL = os.environ.get("GEN_SERVER_URL")
+if not GEN_SECRET or not GENERATION_SERVER_URL:
+    raise RuntimeError("Variables de entorno críticas no definidas")
 session = requests.Session()
 
 app = FastAPI()
-analyzer = PsychologicalAnalyzer()
+_analyzer = None
 
 DEBUG_LOGS = os.environ.get("ANALYSIS_DEBUG", "false").lower() == "true"
+
+def get_analyzer():
+    global _analyzer
+    if _analyzer is None:
+        from psy_analizer import PsychologicalAnalyzer
+        _analyzer = PsychologicalAnalyzer()
+    return _analyzer
+
+analyzer = get_analyzer()
 
 def canonical_json(obj: Any) -> bytes:
     return json.dumps(
@@ -33,6 +46,11 @@ def canonical_json(obj: Any) -> bytes:
         ensure_ascii=False,
         separators=(",", ":"),
     ).encode("utf-8")
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "ts": datetime.utcnow().isoformat()}
 
 
 """
