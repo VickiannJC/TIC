@@ -30,6 +30,7 @@ _analyzer = None
 
 DEBUG_LOGS = os.environ.get("ANALYSIS_DEBUG", "false").lower() == "true"
 
+# Para inicializar el analizador una sola vez
 def get_analyzer():
     global _analyzer
     if _analyzer is None:
@@ -37,8 +38,7 @@ def get_analyzer():
         _analyzer = PsychologicalAnalyzer()
     return _analyzer
 
-analyzer = get_analyzer()
-
+#Para enviar JSON canónico (para HMAC)
 def canonical_json(obj: Any) -> bytes:
     return json.dumps(
         obj,
@@ -47,7 +47,21 @@ def canonical_json(obj: Any) -> bytes:
         separators=(",", ":"),
     ).encode("utf-8")
 
+# Obtener IP real del cliente (detrás de proxy)
+def get_real_client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        # Tomar el primer IP (cliente real)
+        return xff.split(",")[0].strip()
 
+    x_real = request.headers.get("x-real-ip")
+    if x_real:
+        return x_real.strip()
+
+    # Fallback (proxy)
+    return request.client.host if request.client else "unknown"
+
+# Healthcheck básico
 @app.get("/health")
 def health():
     return {"status": "ok", "ts": datetime.utcnow().isoformat()}
@@ -62,7 +76,7 @@ class BioRegistrationPayload(BaseModel):
     idUsuario: str
     user_answers: list[int]
     session_token: str
-
+# Endpoint para recibir datos desde Node después de BIOMETRÍA
 @app.post("/api/biometric-registration")
 async def biometric_registration(data: BioRegistrationPayload):
     """
@@ -73,7 +87,7 @@ async def biometric_registration(data: BioRegistrationPayload):
         print("🔵 —— DATA RECIBIDA DESDE NODE ——")
         print(data.dict())
 
-        
+        analyzer = get_analyzer()
         resultado = analyzer.analyze(
             id_usuario=data.idUsuario,
             user_answers=data.user_answers,
@@ -118,7 +132,7 @@ GENERACION DE CONTRASEÑAS
 
 """
 
-
+# Datos que envía el backend Node.js de la Extensión para iniciar la generación de contraseña
 class GeneratorInit(BaseModel):
     user_id: str
     session_token: str
@@ -130,7 +144,7 @@ class GeneratorInit(BaseModel):
 async def generator_init(request: Request, data: GeneratorInit):
 
     # Datos de seguridad
-    ip = request.client.host
+    ip = get_real_client_ip(request) if request.client else "unknown"
     user_agent = request.headers.get("user-agent", "unknown")
     # Convertir el user_id real → HMAC para empatar en Mongo
     user_id_hmac = proteger_id_usuario(data.user_id)
@@ -209,7 +223,7 @@ async def generator_init(request: Request, data: GeneratorInit):
         print("DEBUG Body:", outbound_payload)
 
     try:
-        resp = session.post(f"{GENERATION_SERVER_URL}/generate", json=outbound_payload, headers=headers, timeout=5)
+        resp = requests.post(f"{GENERATION_SERVER_URL}/generate", json=outbound_payload, headers=headers, timeout=5)
         if resp.status_code != 200:
             raise Exception(resp.text)
         add_log(request_id, "Datos enviados al generador final")
