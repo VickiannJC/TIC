@@ -8,7 +8,6 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
-from psy_analizer import PsychologicalAnalyzer
 from datetime import datetime
 import uuid, json, hmac, hashlib, os, requests
 from seguridad import proteger_id_usuario, descifrar_dict
