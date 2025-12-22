@@ -593,7 +593,7 @@ function startLoginPolling(email, platform, tabId) {
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             user_id: email,
-                            plugin_id: "BROWSER_PLUGIN_1",
+                            plugin_id: "chrome_ext",
                             platform: platform
                         })
                     });

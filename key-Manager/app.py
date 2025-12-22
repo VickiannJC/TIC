@@ -18,12 +18,24 @@ import uuid, os, json, base64
 import hmac, hashlib
 from config import K_DB_PASS
 from flask import Flask
+from config import KEY_MANAGER_ALLOWED_CLIENTS
 
 from dotenv import load_dotenv
 load_dotenv()
 
 
 app = FastAPI(title="Key Manager Secure API")
+
+# ================ Configuración de seguridad para plugin ==================
+# Allowlist de plugins permitidos (plugin_id)->para asegurar que solo plugin autorizado acceda
+_ALLOWED_PLUGINS = {p.strip() for p in (KEY_MANAGER_ALLOWED_CLIENTS or []) if p and p.strip()}
+if not _ALLOWED_PLUGINS:
+    print("⚠️ KM_ALLOWED_CLIENTS vacío/no configurado: allowlist deshabilitada (modo compatibilidad).")
+
+def enforce_allowed_plugin(plugin_id: str) -> None:
+    if _ALLOWED_PLUGINS and plugin_id not in _ALLOWED_PLUGINS:
+        raise HTTPException(status_code=403, detail="Plugin not allowed")
+
 
 API_KEY = os.environ["KEY_MANAGER_API_KEY"]
 KM_PLUGIN_REG_SECRET = os.environ.get("KM_PLUGIN_REG_SECRET")
@@ -236,6 +248,9 @@ class PluginKeyAuthRequest(BaseModel):
 
 @app.post("/auth_plugin_key")
 async def auth_plugin_key(req: PluginKeyAuthRequest):
+    # Verificar allowlist
+    enforce_allowed_plugin(req.plugin_id)
+        # Verificar token de registro HMAC-SHA256
     payload = {
         "user_id": req.user_id,
         "plugin_id": req.plugin_id,
@@ -243,7 +258,7 @@ async def auth_plugin_key(req: PluginKeyAuthRequest):
     }
     if not verify_reg_token(payload, req.reg_token):
         raise HTTPException(status_code=401, detail="Invalid plugin registration token")
-
+    # Almacenar clave pública del plugin
     await store_plugin_public_key(
         user_id=req.user_id,
         plugin_id=req.plugin_id,
@@ -260,6 +275,9 @@ class SendKeysEnvelope(BaseModel):
 
 @app.post("/send_keys_enveloped")
 async def send_keys_enveloped(req: SendKeysEnvelope):
+    # allowlist de plugins permitidos
+    enforce_allowed_plugin(req.plugin_id)
+    # Recuperar server ECC private (para handshake / channel)
     server_priv = await get_or_create_server_private_key()
     plugin_pub = await load_plugin_public_key(req.user_id, req.plugin_id)
 
@@ -300,6 +318,9 @@ class GetKeysEnvelope(BaseModel):
 
 @app.post("/get_keys_enveloped")
 async def get_keys_enveloped(req: GetKeysEnvelope):
+    # allowlist de plugins permitidos
+    enforce_allowed_plugin(req.plugin_id)
+    # Recuperar server ECC private (para handshake / channel)
     server_priv = await get_or_create_server_private_key()
     plugin_pub = await load_plugin_public_key(req.user_id, req.plugin_id)
 
@@ -347,7 +368,8 @@ async def get_password_enveloped(req: GetPasswordEnvelope):
     - Descifra la contraseña en KM
     - La cifra con envelope (AES-GCM(channel_key)) y la devuelve al plugin
     """
-
+    # allowlist de plugins permitidos
+    enforce_allowed_plugin(req.plugin_id)
     # Recuperar server ECC private (para handshake / channel)
     server_priv = await get_or_create_server_private_key()
 

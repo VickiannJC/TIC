@@ -3,7 +3,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from config import SIGNING_SECRET
+from config import KM_PLUGIN_REG_SECRET
 
 def derive_shared_channel_key(server_private_key, plugin_public_bytes: bytes) -> bytes:
     """
@@ -64,11 +64,11 @@ def verify_request_signature(request_body: bytes, header_signature: str, header_
     mensaje = f"{header_timestamp}.".encode("utf-8") + request_body
 
     #  Calcular HMAC localmente usando la clave secreta importada de config
-    if not SIGNING_SECRET:
-        print("❌ Error Crítico: SIGNING_SECRET no está configurado en config.py")
+    if not KM_PLUGIN_REG_SECRET:
+        print("❌ Error Crítico: KM_PLUGIN_REG_SECRET no está configurado en config.py")
         return False
         
-    secret_bytes = SIGNING_SECRET.encode('utf-8') 
+    secret_bytes = KM_PLUGIN_REG_SECRET.encode('utf-8') 
     hmac_calculado = hmac.new(secret_bytes, mensaje, hashlib.sha256).hexdigest()
 
     # Comparar (secure compare para evitar timing attacks)
