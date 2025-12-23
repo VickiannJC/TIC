@@ -832,6 +832,16 @@ app.get("/api/registro-estado", async (req, res) => {
     return res.json({ estado: "pendiente" });
 });
 
+async function waitForAnalyzer() {
+    for (let i = 0; i < 5; i++) {
+        try {
+            const r = await fetch(`${ANALYSIS_BASE_URL}/health`, { timeout: 1000 });
+            if (r.ok) return true;
+        } catch { }
+        await new Promise(r => setTimeout(r, 500));
+    }
+    return false;
+}
 
 
 
@@ -914,6 +924,10 @@ app.post("/api/registro-finalizado", async (req, res) => {
             };
 
             dlog("📦 Enviando payload al módulo de análisis:", payload);
+            if (!(await waitForAnalyzer())) {
+                throw new Error("Analyzer no disponible");
+            }
+
 
             try {
                 const response = await fetch(`${ANALYSIS_BASE_URL}/api/biometric-registration`, {
