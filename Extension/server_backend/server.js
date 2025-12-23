@@ -953,6 +953,8 @@ app.post("/api/registro-finalizado", async (req, res) => {
                 }
 
                 dlog("⬅️ psy_analyzer respondió:", response.status);
+                const text = await response.text();
+                dlog("⬅️ psy_analyzer response text:", text);
             } catch (err) {
                 console.error("❌ Error enviando a psy_analyzer:", err);
             }
