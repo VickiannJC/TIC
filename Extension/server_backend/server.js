@@ -849,16 +849,51 @@ app.post("/api/registro-finalizado", async (req, res) => {
 
     dlog("BODY /api/registro-finalizado:", req.body);
     try {
-        const { user_id, email, session_token, action } = req.body;
+        //const { user_id, email, session_token, action } = req.body;
+        const { jwt_token } = req.body;
 
-        if (!email || !session_token || !action) {
-            console.error("❌ Faltan campos obligatorios en /registro-finalizado");
-            return res.status(400).json({ error: "missing_fields" });
+        // Verificar JWT
+        if (!jwt_token) {
+             return res.status(400).json({ error: "jwt_required" });
         }
 
+        // Decodificar JWT
+        const jwtCheck = verifyBiometriaJwt(jwt_token);
+
+        if (!jwtCheck.ok) {
+            await logSecurityEvent("invalid_biometria_jwt", {
+                ip: req.ip,
+                path: req.path,
+                meta: { error: jwtCheck.error.message }
+            });
+            return res.status(401).json({ error: "invalid_jwt" });
+        }
+
+        const {
+            authenticated,
+            user_id,
+            email,
+            raw_responses,
+            session_token,
+            action
+        } = jwtCheck.payload;
+
+        // Verificar acción
+
         if (action !== "registro") {
-            console.error("❌ Acción inválida en /registro-finalizado:", action);
-            return res.status(400).json({ error: "invalid_action" });
+            return res.status(400).json({ error: "invalid_action_in_jwt" });
+        }
+
+        // Verificar que la biometría fue exitosa
+
+        if (!authenticated) {
+            return res.status(400).json({ error: "biometria_not_authenticated" });
+        }
+
+        // Verificar campos obligatorios
+
+        if (!user_id || !email || !session_token) {
+            return res.status(400).json({ error: "missing_fields_in_jwt" });
         }
 
         // cancelar timer
@@ -877,21 +912,15 @@ app.post("/api/registro-finalizado", async (req, res) => {
             console.warn("⚠ [REGISTRO FINALIZADO] No se encontró sesión temporal.");
             return res.status(404).json({ error: "registration_session_not_found" });
         }
-        let raw_responses = req.body.raw_responses;
 
-        // Si viene como array user_answers → convertirlo
-        if (!raw_responses && Array.isArray(req.body.user_answers)) {
-            raw_responses = req.body.user_answers.join(",");
-        }
-
-        // Si viene como array (forma interna) → convertirlo
-        if (Array.isArray(raw_responses)) {
-            raw_responses = raw_responses.join(",");
+        let respuestas = raw_responses;
+        if (Array.isArray(respuestas)) {
+            respuestas = respuestas.join(",");
         }
 
         temp.status = "biometria_ok";
         temp.userBiometriaId = user_id;
-        temp.cadenaValores = raw_responses;
+        temp.cadenaValores = respuestas;
 
         await temp.save();
 
