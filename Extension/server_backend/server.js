@@ -897,7 +897,11 @@ app.post("/api/registro-finalizado", async (req, res) => {
             email, user_id, raw_responses, session_token
         });
         // 5. Enviar datos al módulo de análisis (Python)
+        console.log("ANALYSIS_BASE_URL =", ANALYSIS_BASE_URL);
+
         if (ANALYSIS_BASE_URL) {
+            console.log("🚀 INTENTANDO POST A ANALYSIS");
+
             const parsedAnswers = raw_responses
                 .split(",")
                 .map((x) => parseInt(x.trim(), 10));
