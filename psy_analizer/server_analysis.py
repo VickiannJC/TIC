@@ -17,7 +17,8 @@ from typing import Any
 from guardar_analisis import col as psy_col
 from guardar_analisis import buscar_usuario_por_hmac
 import requests
-
+import socket
+print("🔥 ANALYZER INSTANCE:", socket.gethostname())
 GEN_SECRET = os.environ.get("GEN_HMAC_SECRET")
 GENERATION_SERVER_URL = os.environ.get("GEN_SERVER_URL")
 if not GEN_SECRET or not GENERATION_SERVER_URL:
@@ -66,7 +67,7 @@ def health():
     return {"status": "ok", "ts": datetime.utcnow().isoformat()}
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    print(f" {request.method} {request.url.path}")
+    print(f"[{socket.gethostname()}] {request.method} {request.url.path}")
     return await call_next(request)
 
 
