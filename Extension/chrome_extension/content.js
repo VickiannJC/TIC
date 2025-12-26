@@ -224,7 +224,7 @@ function handleServerResponse(data) {
 
     // ERROR GENERAL
     if (data.status === "error") {
-        alert("Psy-Password: " + data.error);
+        alert("GenIA: " + data.error);
         removeQRModal();
         resetButtons();
     }

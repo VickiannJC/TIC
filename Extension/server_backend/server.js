@@ -718,7 +718,7 @@ app.get("/mobile_client/register-confirm", async (req, res) => {
 
         const html = loadTemplate("registro_estetico.html")
             .replace("{{EMAIL}}", email)
-            .replace("{{TOKEN}}", session_token || "");
+            .replace("{{SESSION_TOKEN}}", session_token || "");
 
         return res.send(html);
 
@@ -730,9 +730,14 @@ app.get("/mobile_client/register-confirm", async (req, res) => {
         return res.send(html);
     }
 });
+
+// ===========================================================
+// GET → MOSTRAR PANTALLA ESTÉTICA DE ESPERA
+// ===========================================================
+
 app.post("/mobile_client/register-confirm-continue", async (req, res) => {
     try {
-        const { email } = req.body;
+        const { email, session_token} = req.body;
 
         // 1. Llamar check-user recién aquí
         let raw = await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/check-user`, {
@@ -774,6 +779,10 @@ app.post("/mobile_client/register-confirm-continue", async (req, res) => {
 
         // 3. CASO B: Usuario NO existe → INICIAR TEMPORIZADOR DE ESPERA
         dlog("Usuario no existe, iniciando temporizador de espera para registro…");
+        const biometria_url =
+            `https://authgesture.com/enrollment` +
+            `?session_token=${encodeURIComponent(session_token)}`;
+
 
         // cancelar timer previo si existiera
         if (biometricRegTimers.has(email)) {
@@ -798,13 +807,8 @@ app.post("/mobile_client/register-confirm-continue", async (req, res) => {
 
         biometricRegTimers.set(email, timer);
 
-        // MOSTRAR PANTALLA DE ESPERA (sin authenticate-start)
-        return res.send(
-            loadTemplate("registro_estetico.html")
-                .replace("{{EMAIL}}", email)
-                .replace("{{SESSIONID}}", req.body.token)
-                .replace("{{BIOMETRIA_URL}}", "") // ya no se usa
-        );
+
+        return res.redirect(303, biometria_url);
 
     } catch (err) {
         console.error("🔥 Error en /register-confirm-continue:", err);
@@ -870,7 +874,6 @@ app.post("/api/registro-finalizado", async (req, res) => {
         }
 
         const {
-            authenticated,
             user_id,
             email,
             raw_responses,
@@ -882,12 +885,6 @@ app.post("/api/registro-finalizado", async (req, res) => {
 
         if (action !== "registro") {
             return res.status(400).json({ error: "invalid_action_in_jwt" });
-        }
-
-        // Verificar que la biometría fue exitosa
-
-        if (!authenticated) {
-            return res.status(400).json({ error: "biometria_not_authenticated" });
         }
 
         // Verificar campos obligatorios

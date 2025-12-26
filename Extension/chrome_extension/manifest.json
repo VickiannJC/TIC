@@ -18,7 +18,8 @@
       "resources": [
         "qr_page.html",
         "qr_page.js",
-        "km_client.js"
+        "km_client.js",
+        "Capibara.mp4"
       ],
       "matches": ["*://*.facebook.com/*"]
     }

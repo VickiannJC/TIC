@@ -106,8 +106,8 @@
         <p>Tu dispositivo ha sido vinculado correctamente.<br>Para finalizar, continúa con el registro biométrico.</p>
         <form action="/mobile_client/register-confirm-continue" method="POST">
             <input type="hidden" name="email" value="{{EMAIL}}">
-            <input type="hidden" name="token" value="{{TOKEN}}"> 
-            <button type="submit">Continuar</button>
+            <input type="hidden" name="session_token" value="{{SESSION_TOKEN}}"> 
+            <button type="submit" id="continueBtn">Continuar</button>
         </form>
 
 

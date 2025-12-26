@@ -163,24 +163,23 @@ async def process_generation(
         # 1) Calcular exponente
         print("➡️ Calculando exponente...")
         exponente = password_generation.calcular_exponente(req.psy_values, req.numeric_code)
-        print("✔ Exponente generado:", exponente)
+        print("✔ Exponente generado")
 
         # 2) ECC private key + public key
         print("➡️ Construyendo clave privada ECC...")
         llave_privada = password_generation.construir_clave_privada(exponente)
         if llave_privada is None:
             raise ValueError("No se pudo construir la clave privada ECC")
-        print("✔ Clave privada ECC OK:", type(llave_privada))
+        print("✔ Clave privada ECC OK")
 
         llave_publica = llave_privada.public_key()
-        print("✔ Clave pública ECC OK:", type(llave_publica))
+        print("✔ Clave pública ECC OK")
 
         # 3) Cifrar la contraseña
         print("➡️ Cifrando contraseña mediante ECC...")
         pw_bytes = req.password.encode()
         cipher_struct = password_generation.ecc_encriptar_password(llave_publica, pw_bytes)
-        print("✔ Cipher_struct generado:")
-        print(cipher_struct)
+        print("✔ Cipher_struct generado")
 
         # 4) Serializar private key
         print("➡️ Serializando clave privada a DER...")
