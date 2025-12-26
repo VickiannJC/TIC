@@ -734,6 +734,19 @@ app.get("/mobile_client/register-confirm", async (req, res) => {
 // ===========================================================
 // GET → MOSTRAR PANTALLA ESTÉTICA DE ESPERA
 // ===========================================================
+// Intentar "despertar" el analizador al iniciar el servidor
+function warmUpAnalyzer() {
+    if (!ANALYSIS_BASE_URL) return;
+
+    fetch(`${ANALYSIS_BASE_URL}/health`, {
+        method: "GET",
+        timeout: 1000
+    }).then(() => {
+        dlog("🔥 Analyzer pre-warmed");
+    }).catch(err => {
+        dlog("⚠ Analyzer aún dormido:", err.message);
+    });
+}
 
 app.post("/mobile_client/register-confirm-continue", async (req, res) => {
     try {
@@ -779,10 +792,11 @@ app.post("/mobile_client/register-confirm-continue", async (req, res) => {
 
         // 3. CASO B: Usuario NO existe → INICIAR TEMPORIZADOR DE ESPERA
         dlog("Usuario no existe, iniciando temporizador de espera para registro…");
-        const biometria_url =
+
+        /**const biometria_url =
             `https://authgesture.com/enrollment` +
             `?session_token=${encodeURIComponent(session_token)}`;
-
+        **/
 
         // cancelar timer previo si existiera
         if (biometricRegTimers.has(email)) {
@@ -806,8 +820,9 @@ app.post("/mobile_client/register-confirm-continue", async (req, res) => {
         }, REG_TIMEOUT_MS);
 
         biometricRegTimers.set(email, timer);
-
-
+        // Intentar "despertar" el analizador
+        warmUpAnalyzer();
+        
         return res.redirect(303, biometria_url);
 
     } catch (err) {
