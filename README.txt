@@ -33,6 +33,12 @@ mongodb+srv://psy-password:pSyG3nIa25$@cluster-genia.e5kwukz.mongodb.net/?appNam
 Node.js:
 mongodb+srv://psy-password:pSyG3nIa25$@cluster-genia.e5kwukz.mongodb.net/?appName=cluster-GenIA
 
+BIOMETRIC MODULE
+https://systemb-backend.onrender.com
+
+MOCK BIOMETRIA
+https://0f735a0e-90f0-4843-abb1-36ed72dd38e9.mock.pstmn.io
+
 
 
 
