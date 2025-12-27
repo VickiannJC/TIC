@@ -8,7 +8,7 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
-from datetime import datetime, time
+from datetime import datetime
 import time
 import uuid, json, hmac, hashlib, os, requests
 from seguridad import proteger_id_usuario, descifrar_dict
@@ -26,7 +26,8 @@ NODE_ANALYZER_SECRET = os.environ.get("NODE_ANALYZER_SECRET")
 if not GEN_SECRET or not GENERATION_SERVER_URL:
     raise RuntimeError("Variables de entorno críticas no definidas")
 session = requests.Session()
-
+if not NODE_ANALYZER_SECRET:
+    raise RuntimeError("NODE_ANALYZER_SECRET no definido en variables de entorno.")
 app = FastAPI()
 _analyzer = None
 
@@ -55,7 +56,11 @@ def verify_node_signature(body: dict, sig: str, ts: str):
 
     # Anti-replay (10 minutos)
     now = int(time.time() * 1000)
-    req_time = int(ts)
+    try:
+        req_time = int(ts)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid timestamp")
+
     if abs(now - req_time) > 600_000:
         raise HTTPException(status_code=401, detail="Expired timestamp")
 
@@ -114,7 +119,7 @@ async def biometric_registration(request: Request, data: BioRegistrationPayload)
     """
     try:
         # Verificar firma HMAC-SHA256
-        sig = request.headers.get("x-signature")
+        sig = request.headers.get("x-payload-signature")
         ts = request.headers.get("x-timestamp")
         verify_node_signature(data.dict(), sig, ts)
 
