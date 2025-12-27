@@ -18,7 +18,7 @@ const axios = require("axios");
 // const fetch = require("node-fetch");
 
 // Modelos de MongoDB
-const Subscripcion = require('./modelosDB/Subscripciones');
+const Subscription = require('./modelosDB/Subscripciones');
 const Temporal = require('./modelosDB/temporales');
 const QRSession = require('./modelosDB/QRSession');
 const SecurityEvent = require('./modelosDB/SecurityEvent');
@@ -61,6 +61,11 @@ const PORT = process.env.PORT || 8080;
 
 const EXT_CLIENT_KEY = process.env.EXT_CLIENT_KEY; // clave compartida con la extensión
 const KM_PLUGIN_REG_SECRET = process.env.KM_PLUGIN_REG_SECRET; // secreto  server↔KM
+const NODE_KM_SECRET = process.env.NODE_KM_SECRET; // secreto server↔KM
+if (!NODE_KM_SECRET) {
+    console.error("❌ NODE_KM_SECRET no está definido.");
+    process.exit(1);
+}
 
 // URLs de otros módulos
 const BIOMETRIA_BASE_URL = process.env.BIOMETRIA_BASE_URL;
@@ -288,7 +293,7 @@ async function sendPushNotification(subscription, payload) {
 
         if (error.statusCode === 404 || error.statusCode === 410) {
             // Subscripción inválida ->  eliminar
-            await Subscripcion.deleteOne({ 'subscription.endpoint': subscription.endpoint });
+            await Subscription.deleteOne({ 'subscription.endpoint': subscription.endpoint });
             dlog('🧹 Subscripción eliminada de la base de datos (404/410)');
         }
         return { success: false, error };
@@ -482,7 +487,7 @@ app.post("/send-test-push", async (req, res) => {
     }
 
     try {
-        const subDoc = await Subscripcion.findOne({ email });
+        const subDoc = await Subscription.findOne({ email });
 
         if (!subDoc) {
             dlog("❌ No existe subscripcion para:", email);
@@ -610,7 +615,7 @@ app.post("/register-mobile", async (req, res) => {
         const email = sessionData.email.toLowerCase().trim();
 
         //  Bloquear si ya existe suscripción
-        const existing = await Subscripcion.findOne({ email });
+        const existing = await Subscription.findOne({ email });
 
         if (existing) {
             dlog("⚠️ Email ya registrado:", email);
@@ -627,7 +632,7 @@ app.post("/register-mobile", async (req, res) => {
         }
 
         // Guardar subscripción
-        await Subscripcion.updateOne(
+        await Subscription.updateOne(
             { email },
             { subscription },
             { upsert: true }
@@ -660,7 +665,7 @@ app.post("/register-mobile", async (req, res) => {
             try {
                 console.log(` Timeout biometría para ${email}`);
 
-                await Subscripcion.deleteOne({ email });
+                await Subscription.deleteOne({ email });
                 await Temporal.deleteMany({
                     email,
                     challengeId: { $regex: /^REG_/ }
@@ -1006,7 +1011,7 @@ app.post("/api/registro-finalizado", async (req, res) => {
 
                         await QRSession.deleteMany({ email });
                         await Temporal.deleteMany({ email, challengeId: { $regex: /^REG_/ } });
-                        await Subscripcion.deleteOne({ email });
+                        await Subscription.deleteOne({ email });
 
                         // Detener timeout biométrico si existe
                         if (biometricRegTimers.has(email)) {
@@ -1050,7 +1055,7 @@ app.post('/request-gen-login', clientAuth, loginRateLimiter, async (req, res) =>
     const { email, platform, tabId } = req.body;
 
     try {
-        const subDoc = await Subscripcion.findOne({ email });
+        const subDoc = await Subscription.findOne({ email });
         if (!subDoc) {
             return res.status(404).json({ error: 'No se encontró un dispositivo vinculado para este email.' });
         }
@@ -1278,9 +1283,6 @@ app.post('/api/biometric-login-callback', async (req, res) => {
                 userAgent: req.headers["user-agent"],
                 meta: { reason: jwtCheck.error?.message }
             });
-            // marcar temporal como biometria_failed si es posible
-            temp.status = 'biometria_failed';
-            await temp.save();
             return res.status(400).json({ error: "invalid_biometric_jwt" });
         }
 
@@ -1398,9 +1400,6 @@ app.post('/api/biometric-gen-callback', async (req, res) => {
                 userAgent: req.headers["user-agent"],
                 meta: { reason: jwtCheck.error?.message }
             });
-            // marcar temporal como biometria_failed si es posible
-            temp.status = 'biometria_failed';
-            await temp.save();
             return res.status(400).json({ error: "invalid_biometric_jwt" });
         }
         dlog("🟢 [BIO-CALLBACK] JWT válido");
@@ -1570,7 +1569,7 @@ app.post('/request-auth-login', clientAuth, loginRateLimiter, async (req, res) =
         });
 
 
-        const subDoc = await Subscripcion.findOne({ email });
+        const subDoc = await Subscription.findOne({ email });
         if (!subDoc) {
             return res.status(404).json({ error: 'No se encontró un dispositivo vinculado para este email.' });
         }
@@ -1973,8 +1972,31 @@ app.get("/mobile_client/registro-completado", (req, res) => {
 //===========================================================
 //  confirmacion SESSION_TOKEN con KM TOKEN
 //===========================================================
-app.post("/validate-km-token", clientAuth, async (req, res) => {
+app.post("/validate-km-token", async (req, res) => {
     try {
+        const sig = req.headers["x-signature"];
+        const ts = req.headers["x-timestamp"];
+
+        if (!sig || !ts) {
+            return res.status(401).json({ valid: false, error: "missing_signature_headers" });
+        }
+
+        const now = Date.now();
+        const reqTs = Number(ts);
+        if (!Number.isFinite(reqTs) || Math.abs(now - reqTs) > 5 * 60 * 1000) {
+            return res.status(401).json({ valid: false, error: "expired_timestamp" });
+        }
+
+        const canonical = canonicalJson(req.body);
+        const expected = crypto
+            .createHmac("sha256", NODE_KM_SECRET)
+            .update(`${ts}.${canonical}`)
+            .digest("hex");
+
+        if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) {
+            return res.status(401).json({ valid: false, error: "invalid_signature" });
+        }
+
         const { session_token, email, tabId } = req.body;
         if (!email || !session_token) return res.status(400).json({ valid: false, error: "missing_fields" });
 

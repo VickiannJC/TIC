@@ -33,3 +33,6 @@ KM_PLUGIN_REG_SECRET = os.environ.get("KM_PLUGIN_REG_SECRET")
 if not KM_PLUGIN_REG_SECRET:
     raise RuntimeError("KM_PLUGIN_REG_SECRET no definido en variables de entorno.")
 
+NODE_KM_SECRET = os.environ.get("NODE_KM_SECRET")
+if not NODE_KM_SECRET:
+    raise RuntimeError("NODE_KM_SECRET  no definido en variables de entorno.")
