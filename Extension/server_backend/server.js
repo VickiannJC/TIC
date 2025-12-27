@@ -1203,6 +1203,7 @@ app.post('/mobile_client/gen-continue', async (req, res) => {
             status: challenge.status
         });
 
+        /** 
         // inicia biometría
         const respBio = await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/authenticate-start`, {
             method: "POST",
@@ -1217,6 +1218,7 @@ app.post('/mobile_client/gen-continue', async (req, res) => {
                 callback_url: `${SERVER_BASE_URL}/api/biometric-gen-callback`
             })
         });
+        
 
         const dataBio = await respBio.json().catch(() => ({}));
 
@@ -1228,11 +1230,12 @@ app.post('/mobile_client/gen-continue', async (req, res) => {
             console.error("❌ [LOGIN][GEN-CONTINUE] Error authenticate-start:", dataBio);
             return res.send("<h1>Error iniciando autenticación biométrica</h1>");
         }
+        */
 
         dlog("[LOGIN][GEN-CONTINUE] Biometría iniciada, esperando callback…");
         const biometria_url =
             `https://authgesture.com/authenticate` +
-            `?session_token=${encodeURIComponent(session_token)}&email=${encodeURIComponent(challenge.email)}`;
+            `?session_token=${encodeURIComponent(session_token)}&email=${encodeURIComponent(challenge.email)}&action=generation`;
             warmUpAnalyzer();
         return res.redirect(303,biometria_url);
 
@@ -1727,6 +1730,7 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
             status: challenge.status
         });
 
+        /** 
         // ✨ Inicia biometría
         const respBio = await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/authenticate-start`, {
             method: "POST",
@@ -1752,11 +1756,12 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
             console.error("❌ [LOGIN][AUTH-CONTINUE] Error authenticate-start:", dataBio);
             return res.send("<h1>Error iniciando autenticación biométrica</h1>");
         }
+            */
 
         dlog("[LOGIN][AUTH-CONTINUE] Biometría iniciada, esperando callback…");
         const biometria_url =
             `https://authgesture.com/authenticate` +
-            `?session_token=${encodeURIComponent(session_token)}&email=${encodeURIComponent(challenge.email)}`;
+            `?session_token=${encodeURIComponent(session_token)}&email=${encodeURIComponent(challenge.email)}&action=authentication`;
             warmUpAnalyzer();
         return res.redirect(303,biometria_url);
 
