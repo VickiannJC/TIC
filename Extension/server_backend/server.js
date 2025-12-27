@@ -62,7 +62,6 @@ const PORT = process.env.PORT || 8080;
 const EXT_CLIENT_KEY = process.env.EXT_CLIENT_KEY; // clave compartida con la extensión
 const KM_PLUGIN_REG_SECRET = process.env.KM_PLUGIN_REG_SECRET; // secreto  server↔KM
 
-
 // URLs de otros módulos
 const BIOMETRIA_BASE_URL = process.env.BIOMETRIA_BASE_URL;
 const BIOMETRIA_API_KEY = process.env.BIOMETRIA_API_KEY;
@@ -137,8 +136,6 @@ mongoose.connection.on("connected", () => {
 mongoose.connection.on("error", err => {
     console.error("❌ Mongo error:", err);
 });
-
-
 
 
 app.get("/", (req, res) => {
@@ -793,10 +790,9 @@ app.post("/mobile_client/register-confirm-continue", async (req, res) => {
         // 3. CASO B: Usuario NO existe → INICIAR TEMPORIZADOR DE ESPERA
         dlog("Usuario no existe, iniciando temporizador de espera para registro…");
 
-        /**const biometria_url =
+        const biometria_url =
             `https://authgesture.com/enrollment` +
             `?session_token=${encodeURIComponent(session_token)}`;
-        **/
 
         // cancelar timer previo si existiera
         if (biometricRegTimers.has(email)) {
@@ -949,8 +945,6 @@ app.post("/api/registro-finalizado", async (req, res) => {
         dlog("➡️ Enviando payload a psy_analyzer:", {
             email, user_id, raw_responses, session_token
         });
-        // 5. Enviar datos al módulo de análisis (Python)
-        console.log("ANALYSIS_BASE_URL =", ANALYSIS_BASE_URL);
 
         if (ANALYSIS_BASE_URL) {
             console.log("🚀 INTENTANDO POST A ANALYSIS");
@@ -1217,11 +1211,11 @@ app.post('/mobile_client/gen-continue', async (req, res) => {
         }
 
         dlog("[LOGIN][GEN-CONTINUE] Biometría iniciada, esperando callback…");
-
-        return res.send(`
-            <h1>Autenticación iniciada</h1>
-            <p>Completa la verificación biométrica en la app.</p>
-        `);
+        const biometria_url =
+            `https://authgesture.com/enrollment` +
+            `?session_token=${encodeURIComponent(session_token)}&email=${encodeURIComponent(challenge.email)}`;
+            warmUpAnalyzer();
+        return res.redirect(303,biometria_url);
 
     } catch (err) {
         console.error("❌ [LOGIN][GEN-CONTINUE] Error:", err);
@@ -1639,7 +1633,7 @@ app.get('/mobile_client/auth-confirm', async (req, res) => {
         dlog("[LOGIN][AUTH-CONFIRM] Challenge encontrado:", challenge ? {
             email: challenge.email,
             status: challenge.status,
-            challengeId: challenge.challengeId
+            session_token: challenge.session_token
         } : "null");
 
         if (!challenge) {
@@ -1741,11 +1735,11 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
         }
 
         dlog("[LOGIN][AUTH-CONTINUE] Biometría iniciada, esperando callback…");
-
-        return res.send(`
-            <h1>Autenticación iniciada</h1>
-            <p>Completa la verificación biométrica en la app.</p>
-        `);
+        const biometria_url =
+            `https://authgesture.com/enrollment` +
+            `?session_token=${encodeURIComponent(session_token)}&email=${encodeURIComponent(challenge.email)}`;
+            warmUpAnalyzer();
+        return res.redirect(303,biometria_url);
 
     } catch (err) {
         console.error("❌ [LOGIN][AUTH-CONTINUE] Error:", err);
@@ -2157,9 +2151,6 @@ app.use((req, res, next) => {
 
     next();
 });
-
-
-
 
 
 //===========================================================
