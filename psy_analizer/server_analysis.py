@@ -8,7 +8,7 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, time
 import uuid, json, hmac, hashlib, os, requests
 from seguridad import proteger_id_usuario, descifrar_dict
 from mongo_tracking import new_request, update_request, add_log, get_user_history, get_request
@@ -21,6 +21,7 @@ import socket
 print("🔥 ANALYZER INSTANCE:", socket.gethostname())
 GEN_SECRET = os.environ.get("GEN_HMAC_SECRET")
 GENERATION_SERVER_URL = os.environ.get("GEN_SERVER_URL")
+NODE_ANALYZER_SECRET = os.environ.get("NODE_ANALYZER_SECRET")
 if not GEN_SECRET or not GENERATION_SERVER_URL:
     raise RuntimeError("Variables de entorno críticas no definidas")
 session = requests.Session()
@@ -46,6 +47,27 @@ def canonical_json(obj: Any) -> bytes:
         ensure_ascii=False,
         separators=(",", ":"),
     ).encode("utf-8")
+
+def verify_node_signature(body: dict, sig: str, ts: str):
+    if not sig or not ts:
+        raise HTTPException(status_code=401, detail="Missing signature headers")
+
+    # Anti-replay (10 minutos)
+    now = int(time.time() * 1000)
+    req_time = int(ts)
+    if abs(now - req_time) > 600_000:
+        raise HTTPException(status_code=401, detail="Expired timestamp")
+
+    msg = f"{ts}.".encode() + canonical_json(body)
+
+    expected = hmac.new(
+        NODE_ANALYZER_SECRET.encode(),
+        msg,
+        hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, sig):
+        raise HTTPException(status_code=401, detail="Invalid signature")
 
 # Obtener IP real del cliente (detrás de proxy)
 def get_real_client_ip(request: Request) -> str:
@@ -83,15 +105,19 @@ class BioRegistrationPayload(BaseModel):
     session_token: str
 # Endpoint para recibir datos desde Node después de BIOMETRÍA
 @app.post("/api/biometric-registration")
-async def biometric_registration(data: BioRegistrationPayload):
+async def biometric_registration(request: Request, data: BioRegistrationPayload):
     print("🔥 POST biometric-registration ejecutado")
     """
     Recibe datos del server Node (backend central) después de que BIOMETRÍA
     completa el registro y provee la cadena de valores psicológicos.
     """
     try:
+        # Verificar firma HMAC-SHA256
+        sig = request.headers.get("x-signature")
+        ts = request.headers.get("x-timestamp")
+        verify_node_signature(data.dict(), sig, ts)
+
         print("🔵 —— DATA RECIBIDA DESDE NODE ——")
-        print(data.dict())
 
         analyzer = get_analyzer()
         resultado = analyzer.analyze(
@@ -102,7 +128,6 @@ async def biometric_registration(data: BioRegistrationPayload):
         )
 
         print("🔵 —— RESULTADO ANALYZER ——")
-        print(resultado)
 
         # Si devolvió error
         if "error" in resultado:
@@ -155,7 +180,7 @@ async def generator_init(request: Request, data: GeneratorInit):
     # Convertir el user_id real → HMAC para empatar en Mongo
     user_id_hmac = proteger_id_usuario(data.user_id)
     # Buscar usuario por HMAC
-    print("DEBUG find_user TYPE:", buscar_usuario_por_hmac)
+    print("DEBUG find_user")
 
     user = buscar_usuario_por_hmac(user_id_hmac)
 

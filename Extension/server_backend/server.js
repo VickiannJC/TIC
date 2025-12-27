@@ -253,6 +253,20 @@ function canonicalJson(obj) {
     return JSON.stringify(sortObject(obj));
 }
 
+function signNodeToAnalyzer(payload) {
+  const ts = Date.now().toString();
+  const body = canonicalJson(payload);
+  const msg = `${ts}.${body}`;
+
+  const sig = crypto
+    .createHmac("sha256", process.env.NODE_ANALYZER_SECRET)
+    .update(msg)
+    .digest("hex");
+
+  return { sig, ts };
+}
+
+
 function signPluginRegistration(payload) {
     if (!KM_PLUGIN_REG_SECRET) {
         throw new Error("KM_PLUGIN_REG_SECRET no configurado en el servidor Node");
@@ -965,11 +979,16 @@ app.post("/api/registro-finalizado", async (req, res) => {
                 throw new Error("Analyzer no disponible");
             }
 
+            const { sig, ts } = signNodeToAnalyzer(payload);
 
             try {
                 const response = await fetch(`${ANALYSIS_BASE_URL}/api/biometric-registration`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "X-Signature": sig,
+                        "X-Timestamp": ts
+                     },
                     body: JSON.stringify(payload)
                 });
                 if (!response.ok) {
