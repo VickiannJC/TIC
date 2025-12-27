@@ -54,7 +54,7 @@ def verify_node_signature(body: dict, sig: str, ts: str):
     if not sig or not ts:
         raise HTTPException(status_code=401, detail="Missing signature headers")
 
-    # Anti-replay (10 minutos)
+    # Anti-replay -> 10 minutos
     now = int(time.time() * 1000)
     try:
         req_time = int(ts)
