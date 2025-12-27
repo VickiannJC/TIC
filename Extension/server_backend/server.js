@@ -1234,7 +1234,7 @@ app.post('/mobile_client/gen-continue', async (req, res) => {
 
         dlog("[LOGIN][GEN-CONTINUE] Biometría iniciada, esperando callback…");
         const biometria_url =
-            `https://authgesture.com/authenticate` +
+            `https://authgesture.com/verification` +
             `?session_token=${encodeURIComponent(session_token)}&email=${encodeURIComponent(challenge.email)}&action=generation`;
             warmUpAnalyzer();
         return res.redirect(303,biometria_url);
@@ -1760,7 +1760,7 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
 
         dlog("[LOGIN][AUTH-CONTINUE] Biometría iniciada, esperando callback…");
         const biometria_url =
-            `https://authgesture.com/authenticate` +
+            `https://authgesture.com/verification` +
             `?session_token=${encodeURIComponent(session_token)}&email=${encodeURIComponent(challenge.email)}&action=authentication`;
             warmUpAnalyzer();
         return res.redirect(303,biometria_url);
