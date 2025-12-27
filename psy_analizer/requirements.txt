@@ -1,6 +1,7 @@
 #---API & Backend ---
 uvicorn==0.23.2
 fastapi==0.99.1
+gunicorn==21.2.0
 pydantic==1.10.12
 
 #Machine Learning y Ciencias de datos---
