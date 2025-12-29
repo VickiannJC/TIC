@@ -135,7 +135,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         initiateLogin(email, platform, tabId);
         sendResponse({ received: true });
-        return false;
+        return true;
     }
 
     // --------------------------------------------
