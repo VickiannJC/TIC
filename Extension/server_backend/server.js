@@ -1011,7 +1011,7 @@ app.post("/api/registro-finalizado", async (req, res) => {
                     method: "POST",
                     headers: { 
                         "Content-Type": "application/json",
-                        "X-Signature": sig,
+                        "X-Payload-Signature": sig,
                         "X-Timestamp": ts
                      },
                     body: JSON.stringify(payload)
