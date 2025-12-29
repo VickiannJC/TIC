@@ -374,7 +374,7 @@ async def get_password_enveloped(req: GetPasswordEnvelope):
     server_priv = await get_or_create_server_private_key()
 
     #  Recuperar publicKey del plugin (registrada durante handshake)
-    plugin_pub = await load_plugin_public_key(req.user_id, req.plugin_id)
+    plugin_pub = await load_plugin_public_key(password_entry["email"], req.plugin_id)
     if plugin_pub is None:
         raise HTTPException(status_code=400, detail="Plugin key not registered")
 
@@ -404,7 +404,7 @@ async def get_password_enveloped(req: GetPasswordEnvelope):
     # Buscar ECC PRIVATE KEY del usuario (guardada en vault_keys)
    
     priv_bytes, _ = await get_key_material(
-        user_id=req.user_id,
+        user_id=user_id,
         email=password_entry["email"],
         module_type="PASSWORD_GENERATOR",
         purpose="ECC_PRIVATE_KEY",
