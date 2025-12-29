@@ -392,37 +392,17 @@ async def get_password_enveloped(req: GetPasswordEnvelope):
     server_priv = await get_or_create_server_private_key()
 
     #  Recuperar publicKey del plugin (registrada durante handshake)
-    plugin_pub = await load_plugin_public_key(password_entry["email"], req.plugin_id)
+    plugin_pub = await load_plugin_public_key(user_id, req.plugin_id)
     if plugin_pub is None:
         raise HTTPException(status_code=400, detail="Plugin key not registered")
 
     # Derivar canal seguro KM ↔ Plugin (ECDH + HKDF)
     channel_key = derive_shared_channel_key(server_priv, plugin_pub)
-
-
-
-    # Buscar ECC PRIVATE KEY del usuario (guardada en vault_keys)
-   
-    priv_bytes, _ = await get_key_material(
-        user_id=user_id,
-        email=password_entry["email"],
-        module_type="PASSWORD_GENERATOR",
-        purpose="ECC_PRIVATE_KEY",
-        platform=req.platform
-    )
-
-    if priv_bytes is None:
-        raise HTTPException(status_code=500, detail="ECC private key not found")
-
-    # Importar clave privada ECC desde DER
-    try:
-        private_key = serialization.load_der_private_key(priv_bytes, password=None)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load ECC private key: {str(e)}")
-
+  
+    
     plain_password = await get_plain_password_for_user(
-        user_email=password_entry["email"],
-        platform=platform
+        password_entry["email"],
+        platform
     )
 
     if plain_password is None:
