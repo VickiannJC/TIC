@@ -1322,10 +1322,7 @@ app.post('/api/biometric-login-callback', async (req, res) => {
             authenticated
         } = jwtCheck.payload;
 
-        //  Verificar acción
-        if (action !== "autentication") {
-            return res.status(400).json({ error: "invalid_action" });
-        }
+        
         if (!user_id) {
             return res.status(400).json({ error: "user_id required" });
         }
@@ -1443,16 +1440,15 @@ app.post('/api/biometric-gen-callback', async (req, res) => {
             authenticated
         } = jwtCheck.payload;
 
+        /** 
+
         dlog("🧪 JWT action recibida:", action);
         dlog("🧪 JWT email recibida:", email);
         dlog("🧪 JWT user recibida:", user_id);
         dlog("🧪 JWT token recibida:", session_token);
         dlog("🧪 JWT authenticated recibida:", authenticated);
-        
+        */
 
-        if (action !== "generation") {
-            return res.status(400).json({ error: "invalid_action" });
-        }
         if (!user_id) {
             return res.status(400).json({ error: "user_id required" });
         }
