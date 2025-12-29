@@ -296,7 +296,6 @@ function signUrlPayload(payload) {
     );
 }
 
-import crypto from "crypto";
 
 function signPayload(payload, secret) {
   const ts = Date.now().toString();
@@ -2063,7 +2062,7 @@ app.post("/validate-km-token", clientAuth, async (req, res) => {
       email,
       ts: signed.ts
     });
-    
+
     return res.json({
       valid: true,
       issued_at: signed.ts
