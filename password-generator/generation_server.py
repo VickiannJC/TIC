@@ -1,3 +1,4 @@
+print("🚨 SERVER GENERATOR CARGADO")
 import os
 import json
 import hmac
@@ -17,6 +18,7 @@ from generator import generar_contrasena
 from constantes import ALFABETO_EXTENDIDO  
 from dotenv import load_dotenv
 load_dotenv()
+
 
 
 DEBUG_LOGS = os.environ.get("GEN_SERVER_DEBUG", "false").lower() == "true"

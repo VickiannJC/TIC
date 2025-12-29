@@ -109,7 +109,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         startRegistrationFlow(mainTabId);
         sendResponse({ received: true });
-        return false;
+        return true;
     }
 
     // --------------------------------------------

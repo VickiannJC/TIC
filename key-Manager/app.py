@@ -1,3 +1,4 @@
+print("🚨 SERVER KEY MANAGER CARGADO")
 # app.py
 from fastapi import FastAPI, HTTPException, Header
 from models.schemas import StoreEncryptedItemRequest, GetKeyMaterialRequest, GenerationServerRequest
