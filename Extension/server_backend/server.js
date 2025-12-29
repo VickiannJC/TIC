@@ -1259,8 +1259,8 @@ app.post('/mobile_client/gen-continue', async (req, res) => {
 
         dlog("[LOGIN][GEN-CONTINUE] Biometría iniciada, esperando callback…");
         const jwtToken = signUrlPayload({
-            session_token,
-            email,
+            session_token: challenge.session_token,
+            email: challenge.email,
             action: "generation"
         })
         const biometria_url =
@@ -1328,6 +1328,7 @@ app.post('/api/biometric-login-callback', async (req, res) => {
         }
 
         if (!email || !session_token) {
+
             return res.status(400).json({ error: "email_and_session_token_required" });
         }
         dlog("[BIO-CALLBACK] Buscando Temporal");
@@ -1784,8 +1785,8 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
 
         dlog("[LOGIN][AUTH-CONTINUE] Biometría iniciada, esperando callback…");
         const jwtToken = signUrlPayload({
-            session_token,
-            email,
+            session_token: challenge.session_token,
+            email: challenge.email,
             action: "authentication"
         })
         const biometria_url =
