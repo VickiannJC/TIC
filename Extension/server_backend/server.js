@@ -1,7 +1,7 @@
 //version2
 console.log("🚨 SERVER VERSION: 2025-DEPLOY-TEST-001");
 
-require("dotenv").config();
+import("dotenv").config();
 
 const express = require('express');
 const bodyParser = require('body-parser');
