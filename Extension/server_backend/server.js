@@ -271,13 +271,29 @@ function signNodeToAnalyzer(payload) {
   return { sig, ts };
 }
 
-
+// Funcion para firmar comunicacion con con el plug-in -> pass autofill
 function signPluginRegistration(payload) {
     if (!KM_PLUGIN_REG_SECRET) {
         throw new Error("KM_PLUGIN_REG_SECRET no configurado en el servidor Node");
     }
     const msg = canonicalJson(payload);
     return crypto.createHmac("sha256", KM_PLUGIN_REG_SECRET).update(msg).digest("hex");
+}
+
+// Firmar datos con JWT secreto para comunicación con BIOMETRÏA URLS
+export function signUrlPayload(payload) {
+  return jwt.sign(
+    {
+      ...payload,
+      iss: "plugin",
+      aud: "biometria"
+    },
+    BIOMETRIA_JWT_SECRET,          
+    {
+      algorithm: "HS256",
+      expiresIn: "120s"
+    }
+  );
 }
 
 
@@ -808,10 +824,14 @@ app.post("/mobile_client/register-confirm-continue", async (req, res) => {
 
         // 3. CASO B: Usuario NO existe → INICIAR TEMPORIZADOR DE ESPERA
         dlog("Usuario no existe, iniciando temporizador de espera para registro…");
+        const jwtToken = signUrlPayload({
+            session_token,
+            email
+        });
 
         const biometria_url =
             `https://authgesture.com/enrollment` +
-            `?session_token=${encodeURIComponent(session_token)}`;
+            `?t=${encodeURIComponent(jwtToken)}`;
 
         // cancelar timer previo si existiera
         if (biometricRegTimers.has(email)) {
@@ -1238,9 +1258,14 @@ app.post('/mobile_client/gen-continue', async (req, res) => {
         */
 
         dlog("[LOGIN][GEN-CONTINUE] Biometría iniciada, esperando callback…");
+        const jwtToken = signUrlPayload({
+            session_token,
+            email,
+            action: "generation"
+        })
         const biometria_url =
             `https://authgesture.com/verification` +
-            `?session_token=${encodeURIComponent(session_token)}&email=${encodeURIComponent(challenge.email)}&action=generation`;
+            `?t=${encodeURIComponent(jwtToken)}`;
             warmUpAnalyzer();
         return res.redirect(303,biometria_url);
 
@@ -1758,9 +1783,14 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
             */
 
         dlog("[LOGIN][AUTH-CONTINUE] Biometría iniciada, esperando callback…");
+        const jwtToken = signUrlPayload({
+            session_token,
+            email,
+            action: "authentication"
+        })
         const biometria_url =
             `https://authgesture.com/verification` +
-            `?session_token=${encodeURIComponent(session_token)}&email=${encodeURIComponent(challenge.email)}&action=authentication`;
+            `?t=${encodeURIComponent(jwtToken)}`;
             warmUpAnalyzer();
         return res.redirect(303,biometria_url);
 
