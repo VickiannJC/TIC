@@ -370,17 +370,7 @@ async def get_password_enveloped(req: GetPasswordEnvelope):
     """
     # allowlist de plugins permitidos
     enforce_allowed_plugin(req.plugin_id)
-    # Recuperar server ECC private (para handshake / channel)
-    server_priv = await get_or_create_server_private_key()
-
-    #  Recuperar publicKey del plugin (registrada durante handshake)
-    plugin_pub = await load_plugin_public_key(password_entry["email"], req.plugin_id)
-    if plugin_pub is None:
-        raise HTTPException(status_code=400, detail="Plugin key not registered")
-
-    # Derivar canal seguro KM ↔ Plugin (ECDH + HKDF)
-    channel_key = derive_shared_channel_key(server_priv, plugin_pub)
-
+    
     # Extraer user_id del handle efímero
     try:
        user_id = resolve_user_handle(req.user_handle)
@@ -397,8 +387,17 @@ async def get_password_enveloped(req: GetPasswordEnvelope):
 
     if password_entry is None:
         raise HTTPException(status_code=404, detail="Password ciphertext not found")
+    # Recuperar server ECC private (para handshake / channel)
+    server_priv = await get_or_create_server_private_key()
 
-    cipher_struct = password_entry["cipher_struct"]
+    #  Recuperar publicKey del plugin (registrada durante handshake)
+    plugin_pub = await load_plugin_public_key(password_entry["email"], req.plugin_id)
+    if plugin_pub is None:
+        raise HTTPException(status_code=400, detail="Plugin key not registered")
+
+    # Derivar canal seguro KM ↔ Plugin (ECDH + HKDF)
+    channel_key = derive_shared_channel_key(server_priv, plugin_pub)
+
 
 
     # Buscar ECC PRIVATE KEY del usuario (guardada en vault_keys)
@@ -421,7 +420,7 @@ async def get_password_enveloped(req: GetPasswordEnvelope):
         raise HTTPException(status_code=500, detail=f"Failed to load ECC private key: {str(e)}")
 
     #  DESCIFRAR CONTRASEÑA ECC (KM LO HACE LOCALMENTE)
-   
+    cipher_struct = password_entry["cipher_struct"]
     try:
         from km_crypto.ecc_wrapper import ecc_desencriptar_password
         plain_bytes = ecc_desencriptar_password(private_key, cipher_struct)
