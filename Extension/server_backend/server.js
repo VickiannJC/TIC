@@ -2132,8 +2132,8 @@ app.post("/validate-km-token", clientAuth, async (req, res) => {
 app.post("/km-plugin-reg-token", clientAuth, async (req, res) => {
     await mongoReady;
     try {
-        const { user_handle, tabId, plugin_id, public_key_b64 } = req.body;
-        if (!user_handle || !plugin_id || !public_key_b64) {
+        const { userHandle, tabId, plugin_id, public_key_b64 } = req.body;
+        if (!userHandle || !plugin_id || !public_key_b64) {
             return res.status(400).json({ ok: false, error: "missing_fields" });
         }
 
@@ -2154,7 +2154,7 @@ app.post("/km-plugin-reg-token", clientAuth, async (req, res) => {
         if (!temp) {
             return res.status(403).json({ ok: false, error: "invalid_session_state" });
         }
-        const { user_id } = verifyAndDecodeUserHandle(user_handle);
+        const { user_id } = verifyAndDecodeUserHandle(userHandle);
 
 
         const payload = {
