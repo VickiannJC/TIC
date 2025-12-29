@@ -1377,6 +1377,7 @@ app.post('/api/biometric-login-callback', async (req, res) => {
         if (!authenticated) {
             temp.status = 'denied';
             await temp.save();
+            dlog("[LOGIN][BIO-CALLBACK] Callback: biometria authenticated false")
             return res.json({ ok: true, authenticated: false });
         }
         
@@ -1444,8 +1445,14 @@ app.post('/api/biometric-gen-callback', async (req, res) => {
         }
 
         if (!email || !session_token) {
+          
             return res.status(400).json({ error: "email_and_session_token_required" });
         }
+
+        if (!authenticated) {
+            return res.status(400).json({ error: "Biometria: not_autheticated" });
+        }
+
         dlog("[BIO-CALLBACK] Buscando Temporal");
         
 
