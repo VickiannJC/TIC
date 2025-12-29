@@ -44,26 +44,14 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     //  RESET AUTOMÁTICO DE SESIONES HUÉRFANAS
     const session = sessionStore.get(tabId);
 
-    if (session && session.status === "login_pending") {
-    const url = tab.url || "";
-
-    // ⚠️ NO limpiar sesión en SPAs conocidas (Facebook, Google, etc.)
-    const isKnownSPA =
-        url.includes("facebook.com");
-
-    if (isKnownSPA) {
-        console.log("[BG] SPA detectada, conservando login_pending:", url);
-        return;
+    if (
+        session &&
+        session.status === "login_pending" &&
+        Date.now() - session.timestamp > LOGIN_MAX_TIMEOUT
+    ) {
+        console.warn("[BG] login_pending expirado por TTL");
+        sessionStore.delete(tabId);
     }
-
-    console.warn("[BG] login_pending huérfano real. Limpiando sesión…");
-    sessionStore.delete(tabId);
-
-    chrome.tabs.sendMessage(tabId, {
-        action: "authStatusUpdated",
-        status: "none"
-    });
-}
 
 
 
@@ -650,7 +638,7 @@ function startLoginPolling(email, platform, tabId) {
                     console.error("❌ Error obteniendo contraseña desde KM:", err);
                     updateSessionState(tabId, {
                         status: "error",
-                        message: "No se pudo obtener la contraseña desde el KM"
+                        message: err?.message || "No se pudo obtener la contraseña desde el KM"
                     });
                 }
 
@@ -680,7 +668,7 @@ function startLoginPolling(email, platform, tabId) {
         }
     }, POLLING_INTERVAL);
     // Guardar para posible limpieza futura
-        loginPollingIntervals.set(tabId, interval);
+    loginPollingIntervals.set(tabId, interval);
 }
 
 function startGenerationPolling(mainTabId, email, platform) {
@@ -773,7 +761,7 @@ function updateSessionState(tabId, newState) {
             chrome.tabs.sendMessage(targetTab, {
                 action: "authStatusUpdated",
                 status: merged.status,
-                error: merged.error || null
+                error: merged.error || merged.message || null
             }, () => {
                 if (chrome.runtime.lastError) {
                     console.warn("[BG] No se pudo notificar al tab:", chrome.runtime.lastError.message);

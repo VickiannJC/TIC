@@ -265,7 +265,7 @@
 
         // ERROR GENERAL
         if (data.status === "error") {
-            alert("GenIA: " + data.error);
+            alert("GenIA: " + data.error || "Ocurrió un error inesperado durante la autenticación.");
             removeQRModal();
             resetButtons();
         }
