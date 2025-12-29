@@ -356,11 +356,12 @@ async def get_keys_enveloped(req: GetKeysEnvelope):
 class GetPasswordEnvelope(BaseModel):
     user_handle: str
     plugin_id: str
-    platform: Optional[str] = None
+    platform: str
 
 
 @app.post("/get_password_enveloped")
 async def get_password_enveloped(req: GetPasswordEnvelope):
+    print("DEBUG req:", req)
     """
     Recupera la contraseña final del usuario:
     - Busca ciphertext ECC en vault_password
