@@ -573,6 +573,15 @@ function startLoginPolling(email, platform, tabId) {
                     if (!v.ok || vData.valid !== true) {
                         throw new Error("Invalid session_token (backend validation failed)");
                     }
+
+                    const userHandle = vData.user_handle;
+                    if (!userHandle) throw new Error("Missing user_handle from backend");
+
+                    // Guardar en sessionStore (asociado al tab)
+                    sessionStore.set(tabId, {
+                        ...(sessionStore.get(tabId) || {}),
+                        userHandle
+                    });
                     // Inicializar KMClient (usuario + plugin)
                     await KMClient.init({
                         kmBaseUrl: KM_URL,
@@ -593,7 +602,7 @@ function startLoginPolling(email, platform, tabId) {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            user_id: email,
+                            user_handle: session.userHandle,
                             plugin_id: "chrome_ext",
                             platform: platformNorm
                         })

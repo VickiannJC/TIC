@@ -313,6 +313,26 @@ function signPayload(payload, secret) {
     .digest("hex");
 
   return { sig, ts };
+
+}
+
+//Enviar el user_id a la extensión dentro de uns user_handle efímero firmado
+function createUserHandle(payload, secret) {
+  const ts = Date.now();
+  const data = {
+    ...payload,
+    iat: ts,
+    exp: ts + 5 * 60 * 1000 // 5 minutos
+  };
+
+  const encoded = Buffer.from(JSON.stringify(data)).toString("base64url");
+
+  const sig = crypto
+    .createHmac("sha256", secret)
+    .update(encoded)
+    .digest("base64url");
+
+  return `${encoded}.${sig}`;
 }
 
 
@@ -2073,9 +2093,9 @@ app.post("/validate-km-token", clientAuth, async (req, res) => {
     });
 
     if (!temp) return res.status(404).json({ valid: false });
-
+    const user_id = temp.userBiometriaId;
     // Firma interna -> No se  envia al browser
-    const payload = { email, session_token };
+    const payload = { email, session_token, user_id};
     const signed = signPayload(payload, process.env.NODE_KM_SECRET);
 
     
@@ -2084,9 +2104,17 @@ app.post("/validate-km-token", clientAuth, async (req, res) => {
       ts: signed.ts
     });
 
+    const user_handle = createUserHandle(
+      {
+       user_id: temp.userBiometriaId,
+       tabId
+     },
+     process.env.NODE_KM_SECRET
+    );
     return res.json({
       valid: true,
-      issued_at: signed.ts
+      issued_at: signed.ts,
+      user_handle
     });
   } catch (e) {
     console.error("validate-km-token error:", e);

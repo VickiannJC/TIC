@@ -1,9 +1,10 @@
-import os, base64, hmac, hashlib, time
+import os, base64, hmac, hashlib, time, json
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from config import KM_PLUGIN_REG_SECRET
+from config import NODE_KM_SECRET
 
 def derive_shared_channel_key(server_private_key, plugin_public_bytes: bytes) -> bytes:
     """
@@ -78,3 +79,29 @@ def verify_request_signature(request_body: bytes, header_signature: str, header_
         print(f"❌ Firma inválida. Recibida: {header_signature} | Calculada: {hmac_calculado}")
         
     return es_valido
+
+def resolve_user_handle(user_handle: str) -> str:
+    try:
+        encoded, sig = user_handle.split(".")
+        expected_sig = hmac.new(
+            NODE_KM_SECRET.encode(),
+            encoded.encode(),
+            hashlib.sha256
+        ).digest()
+
+        if not hmac.compare_digest(
+            base64.urlsafe_b64encode(expected_sig).rstrip(b"=").decode(),
+            sig
+        ):
+            raise ValueError("Invalid signature")
+
+        payload = json.loads(base64.urlsafe_b64decode(encoded + "==").decode())
+
+        now = int(time.time() * 1000)
+        if payload["exp"] < now:
+            raise ValueError("Handle expired")
+
+        return payload["user_id"]
+
+    except Exception as e:
+        raise ValueError(f"user_handle invalid: {e}")

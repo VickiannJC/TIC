@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives import serialization
 from km_crypto.aes_gcm import encrypt_with_kdb
 from services import password_generation
 from services.plugin_handshake_service import (get_or_create_server_private_key, store_plugin_public_key, load_plugin_public_key)
-from km_crypto.plugin_channel_crypto import envelope_decrypt, envelope_encrypt, derive_shared_channel_key, verify_request_signature
+from km_crypto.plugin_channel_crypto import envelope_decrypt, envelope_encrypt, derive_shared_channel_key, verify_request_signature, resolve_user_handle
 from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
@@ -381,11 +381,17 @@ async def get_password_enveloped(req: GetPasswordEnvelope):
     # Derivar canal seguro KM ↔ Plugin (ECDH + HKDF)
     channel_key = derive_shared_channel_key(server_priv, plugin_pub)
 
+    # Extraer user_id del handle efímero
+    try:
+       user_id = resolve_user_handle(req.user_handle)
+    except Exception:
+        raise HTTPException(status_code=403, detail="Invalid user handle")
+
     # Buscar ciphertext ECC real de la contraseña
     platform = req.platform.lower().strip() if req.platform else None
     platform = "Facebook"
     password_entry = await vault_password.find_one({
-        "user_id": req.user_id,
+        "user_id": user_id,
         "platform": platform,
         "active": True
     })
