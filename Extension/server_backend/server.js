@@ -178,6 +178,41 @@ function clientAuth(req, res, next) {
     next();
 }
 
+//Manejo de user_id entre plug-in y KM
+function verifyAndDecodeUserHandle(user_handle) {
+  if (!user_handle || typeof user_handle !== "string") {
+    throw new Error("invalid_user_handle");
+  }
+
+  const [encoded, sig] = user_handle.split(".");
+  if (!encoded || !sig) {
+    throw new Error("malformed_user_handle");
+  }
+
+  const expectedSig = crypto
+    .createHmac("sha256", process.env.NODE_KM_SECRET)
+    .update(encoded)
+    .digest("base64url");
+
+  if (!crypto.timingSafeEqual(
+        Buffer.from(sig),
+        Buffer.from(expectedSig)
+      )) {
+    throw new Error("invalid_user_handle_signature");
+  }
+
+  const payload = JSON.parse(
+    Buffer.from(encoded, "base64url").toString("utf-8")
+  );
+
+  if (!payload.user_id) {
+    throw new Error("user_id_missing_in_handle");
+  }
+
+  return payload;
+}
+
+
 // ===========================================================
 //  MIDDLEWARE: RATE LIMITING BÁSICO
 // ===========================================================
