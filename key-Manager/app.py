@@ -240,7 +240,7 @@ async def init_handshake():
     }
 
 class PluginKeyAuthRequest(BaseModel):
-    user_id: str
+    user_handle: str
     plugin_id: str
     public_key_b64: str
     reg_token: str
@@ -251,8 +251,9 @@ async def auth_plugin_key(req: PluginKeyAuthRequest):
     # Verificar allowlist
     enforce_allowed_plugin(req.plugin_id)
         # Verificar token de registro HMAC-SHA256
+    user_id = resolve_user_handle(req.user_handle)
     payload = {
-        "user_id": req.user_id,
+        "user_id": user_id,
         "plugin_id": req.plugin_id,
         "public_key_b64": req.public_key_b64
     }
@@ -260,7 +261,7 @@ async def auth_plugin_key(req: PluginKeyAuthRequest):
         raise HTTPException(status_code=401, detail="Invalid plugin registration token")
     # Almacenar clave pública del plugin
     await store_plugin_public_key(
-        user_id=req.user_id,
+        user_id=user_id,
         plugin_id=req.plugin_id,
         public_key_b64=req.public_key_b64
     )

@@ -585,7 +585,7 @@ function startLoginPolling(email, platform, tabId) {
                     // Inicializar KMClient (usuario + plugin)
                     await KMClient.init({
                         kmBaseUrl: KM_URL,
-                        userId: email,
+                        userHandle: userHandle,
                         pluginId: "chrome_ext",
                         nodeBaseUrl: SERVER_BASE_URL,
                         sessionToken: data.session_token,

@@ -2132,14 +2132,13 @@ app.post("/validate-km-token", clientAuth, async (req, res) => {
 app.post("/km-plugin-reg-token", clientAuth, async (req, res) => {
     await mongoReady;
     try {
-        const { email, session_token, tabId, plugin_id, public_key_b64 } = req.body;
-        if (!email || !session_token || !plugin_id || !public_key_b64) {
+        const { user_handle, session_token, tabId, plugin_id, public_key_b64 } = req.body;
+        if (!user_handle || !session_token || !plugin_id || !public_key_b64) {
             return res.status(400).json({ ok: false, error: "missing_fields" });
         }
 
         // Solo durante login ->en km_pending (biometría OK y aún no consumido)
         const q = {
-            email,
             session_token,
             action: "autenticacion",
             status: "km_pending"
@@ -2156,9 +2155,11 @@ app.post("/km-plugin-reg-token", clientAuth, async (req, res) => {
         if (!temp) {
             return res.status(403).json({ ok: false, error: "invalid_session_state" });
         }
+        const { user_id } = verifyAndDecodeUserHandle(user_handle);
+
 
         const payload = {
-            user_id: email,
+            user_id: user_id,
             plugin_id: plugin_id,
             public_key_b64: public_key_b64
         };

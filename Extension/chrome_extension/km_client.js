@@ -41,7 +41,7 @@
     // ==============================
     let _config = {
         kmBaseUrl: null,
-        userId: null,
+        userHandle: null,
         pluginId: null,
         nodeBaseUrl: null,
         sessionToken: null,
@@ -160,7 +160,7 @@
                 "X-Client-Key": _config.extClientKey
             },
             body: JSON.stringify({
-                email: _config.userId,
+                userHandle: _config.userHandle,
                 session_token: _config.sessionToken,
                 tabId: _config.tabId,
                 plugin_id: _config.pluginId,
@@ -179,7 +179,7 @@
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                user_id: _config.userId,
+                user_handle: _config.userHandle,
                 plugin_id: _config.pluginId,
                 public_key_b64: pubB64,
                 reg_token: tokenData.reg_token
@@ -244,7 +244,7 @@
     // Hace el handshake completo (idempotente)
     async function ensureHandshake() {
 
-        if (!_config.kmBaseUrl || !_config.userId || !_config.pluginId) {
+        if (!_config.kmBaseUrl || !_config.userHandle || !_config.pluginId) {
             throw new Error("KMClient.init() debe llamarse antes del handshake");
         }
         if (_channelKey) return _channelKey;
@@ -295,7 +295,7 @@
     }
 
     // ==============================
-    // 6) ENDPOINTS KM: /send_keys_enveloped + /get_keys_enveloped
+    // ENDPOINTS KM: /send_keys_enveloped + /get_keys_enveloped
     // ==============================
 
     // Enviar una clave arbitraria al KM protegida por envelope
@@ -316,7 +316,7 @@
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                user_id: _config.userId,
+                user_handle: _config.userHandle,
                 plugin_id: _config.pluginId,
                 encrypted_payload,
                 metadata: metadata || {}
@@ -336,7 +336,7 @@
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                user_id: _config.userId,
+                user_handle: _config.userHandle,
                 plugin_id: _config.pluginId,
                 module_type,
                 purpose,
@@ -372,9 +372,9 @@
          * Debes llamarlo una vez por tab / sesión en background.js:
          * KMClient.init({ kmBaseUrl, userId, pluginId })
          */
-        async init({ kmBaseUrl, userId, pluginId, nodeBaseUrl, sessionToken, tabId, extClientKey }) {
+        async init({ kmBaseUrl, userHandle, pluginId, nodeBaseUrl, sessionToken, tabId, extClientKey }) {
             if (!kmBaseUrl) throw new Error("kmBaseUrl es obligatorio");
-            if (!userId) throw new Error("userId es obligatorio");
+            if (!userHandle) throw new Error("userHandle es obligatorio");
             if (!pluginId) throw new Error("pluginId es obligatorio");
             if (!nodeBaseUrl) throw new Error("nodeBaseUrl es obligatorio");
             if (!extClientKey) throw new Error("extClientKey es obligatorio");
@@ -382,7 +382,7 @@
             if (!extClientKey) throw new Error("extClientKey es obligatorio");
 
             _config.kmBaseUrl = kmBaseUrl.replace(/\/+$/, ""); // sin barra final
-            _config.userId = userId;
+            _config.userHandle = userHandle;
             _config.pluginId = pluginId;
             _config.nodeBaseUrl = nodeBaseUrl.replace(/\/+$/, "");
             _config.sessionToken = sessionToken || null;
