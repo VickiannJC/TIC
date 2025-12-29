@@ -54,6 +54,7 @@ async def get_plain_password_for_user(email: str, platform: str) -> Optional[str
     # 4. Recuperar private key ECC desde vault_keys
     private_key_bytes, _ = await get_key_material(
         user_id=user_id,
+        email=email,
         module_type="PASSWORD_GENERATOR",
         purpose="ECC_PRIVATE_KEY",
         platform=platform
