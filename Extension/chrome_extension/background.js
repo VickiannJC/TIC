@@ -45,17 +45,26 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     const session = sessionStore.get(tabId);
 
     if (session && session.status === "login_pending") {
-        console.warn("[BG] Se detectó login_pending huérfano tras refresh. Limpiando sesión…");
-        sessionStore.delete(tabId);
+    const url = tab.url || "";
 
-        // notificar al content.js para limpiar UI
-        chrome.tabs.sendMessage(tabId, {
-            action: "authStatusUpdated",
-            status: "none"
-        }, () => {
-            /* ignorar error si no existe content.js en esta página */
-        });
+    // ⚠️ NO limpiar sesión en SPAs conocidas (Facebook, Google, etc.)
+    const isKnownSPA =
+        url.includes("facebook.com");
+
+    if (isKnownSPA) {
+        console.log("[BG] SPA detectada, conservando login_pending:", url);
+        return;
     }
+
+    console.warn("[BG] login_pending huérfano real. Limpiando sesión…");
+    sessionStore.delete(tabId);
+
+    chrome.tabs.sendMessage(tabId, {
+        action: "authStatusUpdated",
+        status: "none"
+    });
+}
+
 
 
     // Buscar sesiones cuyo qrTabId coincida con este tab
@@ -504,6 +513,7 @@ function startLoginPolling(email, platform, tabId) {
 
         // Timeout global
         if (Date.now() - startTime > LOGIN_MAX_TIMEOUT) {
+            console.warn("[BG] login_pending expirado por TTL");
             clearInterval(interval);
             updateSessionState(tabId, {
                 status: "error",
@@ -559,6 +569,7 @@ function startLoginPolling(email, platform, tabId) {
                 try {
                     // ✅ Validación explícita del session_token con backend
                     if (!data.session_token) throw new Error("Missing session_token from backend");
+                    console.log("[KM] Requesting password with plugin_id ", PLUGIN_ID)
 
                     const v = await fetch(`${SERVER_BASE_URL}/validate-km-token`, {
                         method: "POST",
@@ -576,7 +587,7 @@ function startLoginPolling(email, platform, tabId) {
                     await KMClient.init({
                         kmBaseUrl: KM_URL,
                         userId: email,
-                        pluginId: "BROWSER_PLUGIN_1",
+                        pluginId: "chrome_ext",
                         nodeBaseUrl: SERVER_BASE_URL,
                         sessionToken: data.session_token,
                         tabId: tabId,

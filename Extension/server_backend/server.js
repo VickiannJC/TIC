@@ -296,6 +296,20 @@ function signUrlPayload(payload) {
     );
 }
 
+import crypto from "crypto";
+
+function signPayload(payload, secret) {
+  const ts = Date.now().toString();
+  const msg = JSON.stringify(payload) + "." + ts;
+
+  const sig = crypto
+    .createHmac("sha256", secret)
+    .update(msg)
+    .digest("hex");
+
+  return { sig, ts };
+}
+
 
 
 // Enviar notificación push al usuario
@@ -1322,7 +1336,7 @@ app.post('/api/biometric-login-callback', async (req, res) => {
             authenticated
         } = jwtCheck.payload;
 
-        
+
         if (!user_id) {
             return res.status(400).json({ error: "user_id required" });
         }
@@ -2023,52 +2037,41 @@ app.get("/mobile_client/registro-completado", (req, res) => {
 //===========================================================
 //  confirmacion SESSION_TOKEN con KM TOKEN
 //===========================================================
-app.post("/validate-km-token", async (req, res) => {
-    try {
-        const sig = req.headers["x-signature"];
-        const ts = req.headers["x-timestamp"];
-
-        if (!sig || !ts) {
-            return res.status(401).json({ valid: false, error: "missing_signature_headers" });
-        }
-
-        const now = Date.now();
-        const reqTs = Number(ts);
-        if (!Number.isFinite(reqTs) || Math.abs(now - reqTs) > 5 * 60 * 1000) {
-            return res.status(401).json({ valid: false, error: "expired_timestamp" });
-        }
-
-        const canonical = canonicalJson(req.body);
-        const expected = crypto
-            .createHmac("sha256", NODE_KM_SECRET)
-            .update(`${ts}.${canonical}`)
-            .digest("hex");
-
-        if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) {
-            return res.status(401).json({ valid: false, error: "invalid_signature" });
-        }
-
-        const { session_token, email, tabId } = req.body;
-        if (!email || !session_token) return res.status(400).json({ valid: false, error: "missing_fields" });
-
-        // Validación FUERTE: debe ser login, en estado km_pending, y (si viene) ligado al tabId
-        const q = {
-            email,
-            session_token,
-            action: "autenticacion",
-            status: "km_pending"
-        };
-        const tid = (tabId !== undefined && tabId !== null && tabId !== "") ? Number(tabId) : null;
-        if (Number.isFinite(tid)) q["meta.tabId"] = tid;
-
-        const temp = await Temporal.findOne(q).sort({ createdAt: -1 });
-        if (!temp) return res.status(404).json({ valid: false });
-
-        return res.status(200).json({ valid: true });
-    } catch (e) {
-        console.error("❌ Error en /validate-km-token:", e);
-        return res.status(500).json({ valid: false, error: "server_error" });
+app.post("/validate-km-token", clientAuth, async (req, res) => {
+  try {
+    const { email, session_token, tabId } = req.body;
+    if (!email || !session_token) {
+      return res.status(400).json({ valid: false });
     }
+
+    const temp = await Temporal.findOne({
+      email,
+      session_token,
+      action: "autenticacion",
+      status: "km_pending",
+      ...(Number.isFinite(tabId) ? { "meta.tabId": Number(tabId) } : {})
+    });
+
+    if (!temp) return res.status(404).json({ valid: false });
+
+    // Firma interna -> No se  envia al browser
+    const payload = { email, session_token };
+    const signed = signPayload(payload, process.env.NODE_KM_SECRET);
+
+    
+    console.log("[KM-TOKEN] validado", {
+      email,
+      ts: signed.ts
+    });
+    
+    return res.json({
+      valid: true,
+      issued_at: signed.ts
+    });
+  } catch (e) {
+    console.error("validate-km-token error:", e);
+    res.status(500).json({ valid: false });
+  }
 });
 
 /**
