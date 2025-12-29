@@ -1,30 +1,30 @@
 //version2
 console.log("🚨 SERVER VERSION: 2025-DEPLOY-TEST-001");
 
-import("dotenv").config();
+import "dotenv/config";
 
-const express = require('express');
-const bodyParser = require('body-parser');
-const webpush = require('web-push');
-const cors = require('cors');
-const qrcode = require('qrcode');
-const mongoose = require('mongoose');
-const path = require('path');
-const jwt = require("jsonwebtoken");
-const fs = require("fs");
-const crypto = require("crypto");
-const axios = require("axios");
-// Si tu versión de Node no tiene fetch global, descomenta esta línea:
+import express from 'express';
+import bodyParser from 'body-parser';
+import webpush  from 'web-push';
+import cors from 'cors';
+import qrcode from 'qrcode';
+import mongoose from 'mongoose';
+import path from 'path';
+import  jwt from "jsonwebtoken";
+import fs from "fs";
+import crypto from "crypto";
+import axios from "axios";
+
 // const fetch = require("node-fetch");
 
 // Modelos de MongoDB
-const Subscription = require('./modelosDB/Subscripciones');
-const Temporal = require('./modelosDB/temporales');
-const QRSession = require('./modelosDB/QRSession');
-const SecurityEvent = require('./modelosDB/SecurityEvent');
+import Subscription from './modelosDB/Subscripciones';
+import Temporal from './modelosDB/temporales';
+import QRSession from './modelosDB/QRSession';
+import SecurityEvent from './modelosDB/SecurityEvent';
 
 // Configuración y claves VAPID
-const config = require('./config');
+import config  from './config';
 
 
 
