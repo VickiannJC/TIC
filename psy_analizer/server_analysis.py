@@ -3,6 +3,8 @@
 # Recibimos los datos de Extensión que recibio de Biometria
 print("🚀 server_analysis import started")
 
+
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -30,6 +32,8 @@ if not NODE_ANALYZER_SECRET:
     raise RuntimeError("NODE_ANALYZER_SECRET no definido en variables de entorno.")
 app = FastAPI()
 _analyzer = None
+
+print("🔐 NODE_ANALYZER_SECRET (analyzer):", NODE_ANALYZER_SECRET[:6])
 
 DEBUG_LOGS = os.environ.get("ANALYSIS_DEBUG", "false").lower() == "true"
 

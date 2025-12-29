@@ -259,16 +259,16 @@ function canonicalJson(obj) {
 }
 
 function signNodeToAnalyzer(payload) {
-  const ts = Date.now().toString();
-  const body = canonicalJson(payload);
-  const msg = `${ts}.${body}`;
+    const ts = Date.now().toString();
+    const body = canonicalJson(payload);
+    const msg = `${ts}.${body}`;
 
-  const sig = crypto
-    .createHmac("sha256", process.env.NODE_ANALYZER_SECRET)
-    .update(msg)
-    .digest("hex");
+    const sig = crypto
+        .createHmac("sha256", process.env.NODE_ANALYZER_SECRET)
+        .update(msg)
+        .digest("hex");
 
-  return { sig, ts };
+    return { sig, ts };
 }
 
 // Funcion para firmar comunicacion con con el plug-in -> pass autofill
@@ -282,18 +282,18 @@ function signPluginRegistration(payload) {
 
 // Firmar datos con JWT secreto para comunicación con BIOMETRÏA URLS
 function signUrlPayload(payload) {
-  return jwt.sign(
-    {
-      ...payload,
-      iss: "plugin",
-      aud: "biometria"
-    },
-    BIOMETRIA_JWT_SECRET,          
-    {
-      algorithm: "HS256",
-      expiresIn: "120s"
-    }
-  );
+    return jwt.sign(
+        {
+            ...payload,
+            iss: "plugin",
+            aud: "biometria"
+        },
+        BIOMETRIA_JWT_SECRET,
+        {
+            algorithm: "HS256",
+            expiresIn: "120s"
+        }
+    );
 }
 
 
@@ -782,7 +782,7 @@ function warmUpAnalyzer() {
 
 app.post("/mobile_client/register-confirm-continue", async (req, res) => {
     try {
-        const { email, session_token} = req.body;
+        const { email, session_token } = req.body;
 
         // 1. Llamar check-user recién aquí
         let raw = await fetch(`${BIOMETRIA_BASE_URL}/api/v1/biometric/check-user`, {
@@ -857,7 +857,7 @@ app.post("/mobile_client/register-confirm-continue", async (req, res) => {
         biometricRegTimers.set(email, timer);
         // Intentar "despertar" el analizador
         warmUpAnalyzer();
-        
+
         return res.redirect(303, biometria_url);
 
     } catch (err) {
@@ -908,7 +908,7 @@ app.post("/api/registro-finalizado", async (req, res) => {
 
         // Verificar JWT
         if (!jwt_token) {
-             return res.status(400).json({ error: "jwt_required" });
+            return res.status(400).json({ error: "jwt_required" });
         }
 
         // Decodificar JWT
@@ -1009,11 +1009,11 @@ app.post("/api/registro-finalizado", async (req, res) => {
             try {
                 const response = await fetch(`${ANALYSIS_BASE_URL}/api/biometric-registration`, {
                     method: "POST",
-                    headers: { 
+                    headers: {
                         "Content-Type": "application/json",
                         "X-Payload-Signature": sig,
                         "X-Timestamp": ts
-                     },
+                    },
                     body: JSON.stringify(payload)
                 });
                 if (!response.ok) {
@@ -1266,8 +1266,8 @@ app.post('/mobile_client/gen-continue', async (req, res) => {
         const biometria_url =
             `https://authgesture.com/verification` +
             `?t=${encodeURIComponent(jwtToken)}`;
-            warmUpAnalyzer();
-        return res.redirect(303,biometria_url);
+        warmUpAnalyzer();
+        return res.redirect(303, biometria_url);
 
     } catch (err) {
         console.error("❌ [LOGIN][GEN-CONTINUE] Error:", err);
@@ -1295,7 +1295,7 @@ app.post('/api/biometric-login-callback', async (req, res) => {
             return res.status(401).json({ error: "unauthorized" });
         }
 
-        const {jwt_token} = req.body;
+        const { jwt_token } = req.body;
         if (!jwt_token) {
             return res.status(400).json({ error: "jwt_required" });
         }
@@ -1321,12 +1321,12 @@ app.post('/api/biometric-login-callback', async (req, res) => {
             action,
             authenticated
         } = jwtCheck.payload;
-    
+
         //  Verificar acción
-        if (action !== "autenticacion") {
+        if (action !== "autentication") {
             return res.status(400).json({ error: "invalid_action" });
         }
-        if(!user_id){
+        if (!user_id) {
             return res.status(400).json({ error: "user_id required" });
         }
 
@@ -1383,7 +1383,7 @@ app.post('/api/biometric-login-callback', async (req, res) => {
             dlog("[LOGIN][BIO-CALLBACK] Callback: biometria authenticated false")
             return res.json({ ok: true, authenticated: false });
         }
-        
+
         // Marcar como OK estado temporal y guardar datos -> login OK
         temp.status = 'biometria_ok';
         temp.userBiometriaId = user_id;
@@ -1443,15 +1443,15 @@ app.post('/api/biometric-gen-callback', async (req, res) => {
             authenticated
         } = jwtCheck.payload;
 
-        if (action !== "generacion") {
+        if (action !== "generation") {
             return res.status(400).json({ error: "invalid_action" });
         }
-        if(!user_id){
+        if (!user_id) {
             return res.status(400).json({ error: "user_id required" });
         }
 
         if (!email || !session_token) {
-          
+
             return res.status(400).json({ error: "email_and_session_token_required" });
         }
 
@@ -1460,7 +1460,7 @@ app.post('/api/biometric-gen-callback', async (req, res) => {
         }
 
         dlog("[BIO-CALLBACK] Buscando Temporal");
-        
+
 
 
         // Buscar el temporal más reciente
@@ -1509,7 +1509,7 @@ app.post('/api/biometric-gen-callback', async (req, res) => {
             await temp.save();
             return res.json({ ok: true, authenticated: false });
         }
-    
+
 
         //  Marcar como OK estado temporal y guardar datos -> iniciar generación
         temp.status = 'biometria_ok';
@@ -1532,6 +1532,9 @@ app.post('/api/biometric-gen-callback', async (req, res) => {
                     authenticated: true,
                     platform: temp.platform || "Unknown"
                 };
+                console.log("🔐 NODE_ANALYZER_SECRET (node):",
+                    process.env.NODE_ANALYZER_SECRET?.slice(0, 6));
+
 
                 const respAnalyzer = await fetch(`${ANALYSIS_BASE_URL}/generator-init`, {
                     method: "POST",
@@ -1805,8 +1808,8 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
         const biometria_url =
             `https://authgesture.com/verification` +
             `?t=${encodeURIComponent(jwtToken)}`;
-            warmUpAnalyzer();
-        return res.redirect(303,biometria_url);
+        warmUpAnalyzer();
+        return res.redirect(303, biometria_url);
 
 
     } catch (err) {
