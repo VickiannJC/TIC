@@ -10,7 +10,7 @@ from .storage import vault_password
 from .key_service import get_key_material
 
 
-async def get_plain_password_for_user(user_email: str, platform: str) -> Optional[str]:
+async def get_plain_password_for_user(email: str, platform: str) -> Optional[str]:
     """
     Recupera la contraseña en texto plano para autofill usando:
     - Ciphertext ECC guardado en vault_pass
@@ -19,7 +19,7 @@ async def get_plain_password_for_user(user_email: str, platform: str) -> Optiona
 
     # 1. Buscar ciphertext en vault_pass
     entry = await vault_password.find_one({
-        "user_email": user_email,
+        "email": email,
         "platform": platform,
         "active": True
     })
