@@ -1,30 +1,30 @@
 //version2
 console.log("🚨 SERVER VERSION: 2025-DEPLOY-TEST-001");
 
-import "dotenv/config";
+require("dotenv").config();
 
-import express from 'express';
-import bodyParser from 'body-parser';
-import webpush  from 'web-push';
-import cors from 'cors';
-import qrcode from 'qrcode';
-import mongoose from 'mongoose';
-import path from 'path';
-import  jwt from "jsonwebtoken";
-import fs from "fs";
-import crypto from "crypto";
-import axios from "axios";
-
+const express = require('express');
+const bodyParser = require('body-parser');
+const webpush = require('web-push');
+const cors = require('cors');
+const qrcode = require('qrcode');
+const mongoose = require('mongoose');
+const path = require('path');
+const jwt = require("jsonwebtoken");
+const fs = require("fs");
+const crypto = require("crypto");
+const axios = require("axios");
+// Si tu versión de Node no tiene fetch global, descomenta esta línea:
 // const fetch = require("node-fetch");
 
 // Modelos de MongoDB
-import Subscription from './modelosDB/Subscripciones';
-import Temporal from './modelosDB/temporales';
-import QRSession from './modelosDB/QRSession';
-import SecurityEvent from './modelosDB/SecurityEvent';
+const Subscription = require('./modelosDB/Subscripciones');
+const Temporal = require('./modelosDB/temporales');
+const QRSession = require('./modelosDB/QRSession');
+const SecurityEvent = require('./modelosDB/SecurityEvent');
 
 // Configuración y claves VAPID
-import config  from './config';
+const config = require('./config');
 
 
 
@@ -281,7 +281,7 @@ function signPluginRegistration(payload) {
 }
 
 // Firmar datos con JWT secreto para comunicación con BIOMETRÏA URLS
-export function signUrlPayload(payload) {
+function signUrlPayload(payload) {
   return jwt.sign(
     {
       ...payload,
@@ -1793,6 +1793,7 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
             `?t=${encodeURIComponent(jwtToken)}`;
             warmUpAnalyzer();
         return res.redirect(303,biometria_url);
+
 
     } catch (err) {
         console.error("❌ [LOGIN][AUTH-CONTINUE] Error:", err);
