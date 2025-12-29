@@ -1326,6 +1326,9 @@ app.post('/api/biometric-login-callback', async (req, res) => {
         if (action !== "autenticacion") {
             return res.status(400).json({ error: "invalid_action" });
         }
+        if(!user_id){
+            return res.status(400).json({ error: "user_id required" });
+        }
 
         if (!email || !session_token) {
 
@@ -1442,6 +1445,9 @@ app.post('/api/biometric-gen-callback', async (req, res) => {
 
         if (action !== "generacion") {
             return res.status(400).json({ error: "invalid_action" });
+        }
+        if(!user_id){
+            return res.status(400).json({ error: "user_id required" });
         }
 
         if (!email || !session_token) {
