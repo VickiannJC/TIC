@@ -598,11 +598,18 @@ function startLoginPolling(email, platform, tabId) {
                     console.log("🤝 Handshake completado. Solicitando contraseña al KM...");
                     const platformNorm = platform.toLowerCase().trim();
                     // Solicitar contraseña protegida con envelope
+                    const s2 = sessionStore.get(tabId);
+                    const userHandle2 = s2?.userHandle;
+
+                    if (!userHandle2) {
+                        throw new Error("user_handle missing in sessionStore");
+                    }
+
                     const resp = await fetch(`${KM_URL}/get_password_enveloped`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            user_handle: session.userHandle,
+                            user_handle: userHandle2,
                             plugin_id: "chrome_ext",
                             platform: platformNorm
                         })

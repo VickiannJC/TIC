@@ -354,7 +354,7 @@ async def get_keys_enveloped(req: GetKeysEnvelope):
 
 
 class GetPasswordEnvelope(BaseModel):
-    user_id: str
+    user_handle: str
     plugin_id: str
     platform: Optional[str] = None
 
@@ -389,7 +389,6 @@ async def get_password_enveloped(req: GetPasswordEnvelope):
 
     # Buscar ciphertext ECC real de la contraseña
     platform = req.platform.lower().strip() if req.platform else None
-    platform = "Facebook"
     password_entry = await vault_password.find_one({
         "user_id": user_id,
         "platform": platform,
