@@ -420,15 +420,17 @@ async def get_password_enveloped(req: GetPasswordEnvelope):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load ECC private key: {str(e)}")
 
-    #  DESCIFRAR CONTRASEÑA ECC (KM LO HACE LOCALMENTE)
-    cipher_struct = password_entry["cipher_struct"]
-    try:
-        from km_crypto.ecc_wrapper import ecc_desencriptar_password
-        plain_bytes = ecc_desencriptar_password(private_key, cipher_struct)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"ECC decrypt error: {str(e)}")
+    plain_password = await get_plain_password_for_user(
+        user_email=password_entry["email"],
+        platform=platform
+    )
 
- 
+    if plain_password is None:
+        raise HTTPException(status_code=500, detail="Password decryption failed")
+
+    plain_bytes = plain_password.encode("utf-8")
+    
+
     #Envelope encryption (AES-GCM(channel_key))
   
     encrypted_payload = envelope_encrypt(channel_key, plain_bytes)

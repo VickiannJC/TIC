@@ -654,7 +654,6 @@ function startLoginPolling(email, platform, tabId) {
 
                 } catch (err) {
                     console.error("❌ Error obteniendo contraseña desde KM:", err);
-                    alert("❌ Error obteniendo contraseña desde KM")
                     updateSessionState(tabId, {
                         status: "error",
                         message: err?.message || "No se pudo obtener la contraseña desde el KM"
