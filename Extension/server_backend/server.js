@@ -1,5 +1,10 @@
 //version2
 console.log("🚨 SERVER VERSION: 2025-DEPLOY-TEST-001");
+let mongoReadyResolve;
+const mongoReady = new Promise(resolve => {
+  mongoReadyResolve = resolve;
+});
+
 
 require("dotenv").config();
 
@@ -136,6 +141,7 @@ mongoose.connect(process.env.MONGODB_URI, {
 
 mongoose.connection.on("connected", () => {
     console.log("✅ Mongo conectado");
+    mongoReadyResolve();
 });
 
 mongoose.connection.on("error", err => {
@@ -386,6 +392,7 @@ app.get("/mongo-health", async (req, res) => {
  *    - La extensión mostrará este QR y lo podrá regenerar cada 60s.
  */
 app.post("/generar-qr-session", clientAuth, async (req, res) => {
+    await mongoReady;
     try {
         dlog(" /generar-qr-session BODY:", req.body);
 
@@ -470,6 +477,7 @@ app.post("/generar-qr-session", clientAuth, async (req, res) => {
 
 
 app.post("/cancel-qr-session", clientAuth, async (req, res) => {
+    await mongoReady;
     console.log("🔥 cancel-qr-session llamado desde:", {
         headers: req.headers,
         origin: req.headers.origin,
@@ -504,6 +512,7 @@ app.post("/cancel-qr-session", clientAuth, async (req, res) => {
  * Enviar un push de prueba después de registrar el dispositivo.
  */
 app.post("/send-test-push", async (req, res) => {
+    await mongoReady;
     const { email, continueUrl, sessionId, challengeId, session_token } = req.body;
 
     dlog("🔥 /send-test-push BODY recibido:", req.body);
@@ -556,6 +565,7 @@ app.post("/send-test-push", async (req, res) => {
  *    - Se usa para detener la regeneración de QR en el background.
  */
 app.get("/qr-session-status", async (req, res) => {
+    await mongoReady;
     const { sessionId } = req.query;
 
     if (!sessionId) {
@@ -613,6 +623,7 @@ app.get("/qr-session-status", async (req, res) => {
  */
 
 app.post("/register-mobile", async (req, res) => {
+    await mongoReady;
     try {
         const { sessionId, subscription } = req.body;
 
@@ -881,6 +892,7 @@ app.post("/mobile_client/register-confirm-continue", async (req, res) => {
 });
 
 app.get("/api/registro-estado", async (req, res) => {
+    await mongoReady;
     const { email } = req.query;
 
     if (!email) return res.json({ estado: "error" });
@@ -913,7 +925,7 @@ async function waitForAnalyzer() {
 
 
 app.post("/api/registro-finalizado", async (req, res) => {
-
+    await mongoReady;
     dlog("BODY /api/registro-finalizado:", req.body);
     try {
         //const { user_id, email, session_token, action } = req.body;
@@ -1082,6 +1094,7 @@ app.post("/api/registro-finalizado", async (req, res) => {
 //===========================================================
 app.post('/request-gen-login', clientAuth, loginRateLimiter, async (req, res) => {
     dlog("🔵 [GEN-REQUEST] Recibido request-gen-login desde la extensión");
+    await mongoReady;
     dlog("Email:", req.body.email);
     dlog("Platform:", req.body.platform);
 
@@ -1148,6 +1161,7 @@ app.post('/request-gen-login', clientAuth, loginRateLimiter, async (req, res) =>
 });
 
 app.get('/mobile_client/gen-confirm', async (req, res) => {
+    await mongoReady;
     const { session_token, status } = req.query;
 
     dlog("🟦 [LOGIN][GEN-CONFIRM] Request recibida:", { status });
@@ -1195,6 +1209,7 @@ app.get('/mobile_client/gen-confirm', async (req, res) => {
 });
 
 app.post('/mobile_client/gen-continue', async (req, res) => {
+    await mongoReady;
     const { session_token } = req.body;
 
     dlog("[GEN][AUTH-CONTINUE] POST recibido:", { session_token });
@@ -1295,6 +1310,7 @@ app.post('/mobile_client/gen-continue', async (req, res) => {
 
 
 app.post('/api/biometric-login-callback', async (req, res) => {
+    await mongoReady;
     dlog("🟣 [BIO-CALLBACK] Request recibido del módulo biométrico");
 
     try {
@@ -1412,6 +1428,7 @@ app.post('/api/biometric-login-callback', async (req, res) => {
 });
 
 app.post('/api/biometric-gen-callback', async (req, res) => {
+    await mongoReady;
     dlog("🟣 [BIO-CALLBACK] Request recibido del módulo biométrico");
 
     try {
@@ -1611,6 +1628,7 @@ app.post('/api/biometric-gen-callback', async (req, res) => {
  * 5) La extensión pide login: se manda push al móvil.
  */
 app.post('/request-auth-login', clientAuth, loginRateLimiter, async (req, res) => {
+    await mongoReady;
     dlog("🔵 [AUTH-REQUEST] Recibido request-auth-login desde la extensión");
     dlog("Email:", req.body.email);
     dlog("Platform:", req.body.platform);
@@ -1843,6 +1861,7 @@ app.post('/mobile_client/auth-continue', async (req, res) => {
  *    - Caso contrario, pending.
  */
 app.get('/check-password-status', clientAuth, statusRateLimiter, async (req, res) => {
+    await mongoReady;
     res.setHeader("Content-Type", "application/json");
     const { email } = req.query;
     const action = (req.query.action || "").toString().trim();   // "autenticacion" | "generacion" | ""
@@ -1913,6 +1932,7 @@ app.get('/check-password-status', clientAuth, statusRateLimiter, async (req, res
  *        * Se envía info al módulo de análisis (psy_analyzer).
  */
 app.post('/api/analizer-register', async (req, res) => {
+    await mongoReady;
     dlog("🚀 [NODE] Petición recibida en /api/analizer-register");
     try {
         // --- 1. VALIDACIÓN PREVIA (Evita crash si body es null) ---
@@ -2037,6 +2057,7 @@ app.get("/mobile_client/registro-completado", (req, res) => {
 //  confirmacion SESSION_TOKEN con KM TOKEN
 //===========================================================
 app.post("/validate-km-token", clientAuth, async (req, res) => {
+    await mongoReady;
   try {
     const { email, session_token, tabId } = req.body;
     if (!email || !session_token) {
@@ -2081,6 +2102,7 @@ app.post("/validate-km-token", clientAuth, async (req, res) => {
  * Importante: la extensión NO conoce KM_PLUGIN_REG_SECRET, solo recibe el token ya firmado.
  */
 app.post("/km-plugin-reg-token", clientAuth, async (req, res) => {
+    await mongoReady;
     try {
         const { email, session_token, tabId, plugin_id, public_key_b64 } = req.body;
         if (!email || !session_token || !plugin_id || !public_key_b64) {
@@ -2125,6 +2147,7 @@ app.post("/km-plugin-reg-token", clientAuth, async (req, res) => {
  *  Finaliza el login y consume el token (ONE-TIME) SOLO cuando el KM ya fue exitoso.
  */
 app.post("/finalize-km-session", clientAuth, async (req, res) => {
+    await mongoReady;
     try {
         const { email, session_token, tabId } = req.body;
         if (!email || !session_token) return res.status(400).json({ ok: false, error: "missing_fields" });
