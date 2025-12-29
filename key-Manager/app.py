@@ -161,12 +161,12 @@ async def process_generation(
             "session_token": req.session_token
         }
 
-        # 1) Calcular exponente
+        # Calcular exponente
         print("➡️ Calculando exponente...")
         exponente = password_generation.calcular_exponente(req.psy_values, req.numeric_code)
         print("✔ Exponente generado")
 
-        # 2) ECC private key + public key
+        # ECC private key + public key
         print("➡️ Construyendo clave privada ECC...")
         llave_privada = password_generation.construir_clave_privada(exponente)
         if llave_privada is None:
@@ -176,13 +176,13 @@ async def process_generation(
         llave_publica = llave_privada.public_key()
         print("✔ Clave pública ECC OK")
 
-        # 3) Cifrar la contraseña
+        # Cifrar la contraseña
         print("➡️ Cifrando contraseña mediante ECC...")
         pw_bytes = req.password.encode()
         cipher_struct = password_generation.ecc_encriptar_password(llave_publica, pw_bytes)
         print("✔ Cipher_struct generado")
 
-        # 4) Serializar private key
+        # Serializar private key
         print("➡️ Serializando clave privada a DER...")
         priv_bytes = llave_privada.private_bytes(
             encoding=serialization.Encoding.DER,
@@ -192,7 +192,7 @@ async def process_generation(
         print("✔ private_key_bytes length:", len(priv_bytes))
 
 
-        # 5) Guardar private key en vault_keys
+        # Guardar private key en vault_keys
         print("➡️ Guardando clave privada en vault_keys...")
         key_id = await store_key(
             user_id=req.user_id,
@@ -205,14 +205,14 @@ async def process_generation(
             metadata=metadata
         )
         print("✔ Key guardada con key_id:", key_id)
-
-        # 6) Guardar ciphertext en vault_passwords
+        platform = req.platform.lower().strip()
+        # Guardar ciphertext en vault_passwords
         print("➡️ Guardando ciphertext en vault_password...")
         await store_password_ciphertext(
             pass_id=key_id,
             user_id=req.user_id,
             email=req.email,
-            platform=req.platform,
+            platform= platform,
             cipher_struct=cipher_struct,
             key_algo="ECC",
             metadata=metadata
@@ -382,10 +382,10 @@ async def get_password_enveloped(req: GetPasswordEnvelope):
     channel_key = derive_shared_channel_key(server_priv, plugin_pub)
 
     # Buscar ciphertext ECC real de la contraseña
-
+    platform = req.platform.lower().strip() if req.platform else None
     password_entry = await vault_password.find_one({
         "user_id": req.user_id,
-        "platform": req.platform,
+        "platform": platform,
         "active": True
     })
 

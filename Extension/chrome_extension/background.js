@@ -1,6 +1,8 @@
 // ========================================================
 // CONFIG
 // ========================================================
+import { KMClient } from "./km_client.js";
+console.log("[DEBUG] KMClient import OK:", KMClient);
 
 const SERVER_BASE_URL = 'https://genia-api-extension-avbke7bhgea4bngk.eastus2-01.azurewebsites.net';
 const EXT_CLIENT_KEY = "9afe2270278c6647dc54094103a7e7605d61f9b4c0642baf59559453d41c4c94";
@@ -557,7 +559,7 @@ function startLoginPolling(email, platform, tabId) {
                 try {
                     // ✅ Validación explícita del session_token con backend
                     if (!data.session_token) throw new Error("Missing session_token from backend");
-                    console.log("[KM] Requesting password with plugin_id ", PLUGIN_ID)
+                    console.log("[KM] Requesting password with plugin_id chrome_ext")
 
                     const v = await fetch(`${SERVER_BASE_URL}/validate-km-token`, {
                         method: "POST",
@@ -585,7 +587,7 @@ function startLoginPolling(email, platform, tabId) {
                     // Asegurar handshake (si ya existe no repite)
                     await KMClient.ensureHandshake();
                     console.log("🤝 Handshake completado. Solicitando contraseña al KM...");
-
+                    const platformNorm = platform.toLowerCase().trim();
                     // Solicitar contraseña protegida con envelope
                     const resp = await fetch(`${KM_URL}/get_password_enveloped`, {
                         method: "POST",
@@ -593,7 +595,7 @@ function startLoginPolling(email, platform, tabId) {
                         body: JSON.stringify({
                             user_id: email,
                             plugin_id: "chrome_ext",
-                            platform: platform
+                            platform: platformNorm
                         })
                     });
 
@@ -636,6 +638,7 @@ function startLoginPolling(email, platform, tabId) {
 
                 } catch (err) {
                     console.error("❌ Error obteniendo contraseña desde KM:", err);
+                    alert("❌ Error obteniendo contraseña desde KM")
                     updateSessionState(tabId, {
                         status: "error",
                         message: err?.message || "No se pudo obtener la contraseña desde el KM"

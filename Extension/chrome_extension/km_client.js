@@ -1,4 +1,4 @@
-(function () {
+
     // ==============================
     // 1) UTILIDADES BASE64 / BYTES
     // ==============================
@@ -436,11 +436,5 @@
         }
     };
 
-    // Exponer en el contexto de extensión
-    if (typeof self !== "undefined") {
-        self.KMClient = KMClient;
-    }
-    if (typeof window !== "undefined") {
-        window.KMClient = KMClient;
-    }
-})();
+   export { KMClient };
+ 
