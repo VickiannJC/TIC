@@ -127,7 +127,7 @@ def extract_valores_and_cadena(psy_profile: PsyProfile, email: str, platform: st
             detail=f"Missing trait in predicted_scores: {e}"
         )
 
-    # Puedes ajustar esta concatenación según tu esquema deseado
+    # Cadena del usuario con datos importantes
     cadena_usuario = f"{psy_profile.unique_profile_description} | {email} | {platform.lower().strip()}"
 
     return valores, cadena_usuario
@@ -151,7 +151,7 @@ def send_to_key_manager(payload: dict) -> None:
             timeout=5,       # Evita que se quede colgado
         )
     except requests.RequestException as exc:
-        # No exponer detalles internos en exceso
+        #Manejo de errores
         raise HTTPException(
             status_code=502,
             detail=f"Error connecting to Key-Manager: {type(exc).__name__}"
@@ -198,12 +198,10 @@ async def generate_password(request: Request):
 
     # Logs mínimos, sin datos sensibles
     if DEBUG_LOGS:
-        # request_id y platform no son secretos
         print(f"[GEN-SERVER] request_id={data.request_id} platform={platform}")
         print(f"[GEN-SERVER] user_id={data.user_id} email={data.email}")
-        print(f"[GEN-SERVER] PsyProfile scores: {data.psy_profile.predicted_scores}")
-
-    # 4) Extraer valores numéricos y cadena de usuario
+    
+    #  Extraer valores numéricos y cadena de usuario
     valores, cadena_usuario = extract_valores_and_cadena(
         psy_profile=data.psy_profile,
         email=data.email,
@@ -234,8 +232,9 @@ async def generate_password(request: Request):
     )
 
     #  Generar semilla, longitud y punto de inicio
-    semilla = procesador_numerico_password.recoger_semilla_longitud(tag, valores)
-    longitud = procesador_numerico_password.generar_longitud(semilla)
+    #semilla = procesador_numerico_password.recoger_semilla_longitud(tag, valores)
+    # Se decide no usar una semilla de generación para la longitud para evitar que todas las contraseñas del mismo usuario tengan la misma longitud
+    longitud = procesador_numerico_password.generar_longitud()
     punto_inicio = procesador_numerico_password.generar_punto_inicio()
 
     #  Generar contraseña final
@@ -265,7 +264,7 @@ async def generate_password(request: Request):
         "psy_values": valores,
         "request_id": data.request_id,
     }
-    print("DEBUG km_payload generado:", km_payload)
+    print("✔  km_payload generado")
 
     # Enviar al Key-Manager (HTTPS + API KEY)
     send_to_key_manager(km_payload)

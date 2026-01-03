@@ -116,12 +116,12 @@ def recoger_semilla_longitud(tag_plataforma: str, lista_valores: List[float]) ->
     semilla = penultimo_digito * ultimo_digito_tag
     return semilla
 
-def generar_longitud(semilla: int, min_length: int = longitud_minima, max_length: int = longitud_maxima) -> int:
-    """Genera una longitud para la contraseña entre min_length y max_length usando una semilla."""
-    random.seed(semilla)
+def generar_longitud(min_length: int = longitud_minima, max_length: int = longitud_maxima) -> int:
+    """Genera una longitud para la contraseña entre min_length y max_length ."""
+    #random.seed(semilla)
     numero = random.randint(min_length, max_length)
     
-    random.seed()  # Restablecer la semilla del generador de números aleatorios
+    #random.seed()  # Restablecer la semilla del generador de números aleatorios
     return numero
 
 def generar_punto_inicio() -> int:
