@@ -50,9 +50,10 @@ def calcular_exponente(lista_valores: List[float], num_codificacion: int = 0) ->
     a = (a | 1)
     
     # Inspiración GLC: combinación modular de tres fuentes (a, c, num_codificación)
+    d = ((c + num_codificacion)) | 1
     tiempo1=tiempo_a_int()
     semilla_1 = (c * tiempo1 + a) % m #primera mezcla -> para difuminar la correlación con la entrada
-    semilla_2 = ((c + num_codificacion) * tiempo1 + a) % m  # segunda mezcla -> para reforzar la entropía
+    semilla_2 = (d * tiempo1 + a) % m  # segunda mezcla -> para reforzar la entropía
 
     # Cálculo de resultados intermedios
     resultado_1 = (c * semilla_1 + a) % m
