@@ -33,9 +33,8 @@ def calcular_exponente(lista_valores: List[float], num_codificacion: int = 0) ->
 
     #  Ajustes y limitaciones de tamaño 
     c = c * phi64 # Multiplicar por el número áureo para aumentar dispoersión
-    c = (c | 1) % (2 ** 64)  # Forzar impar y limitar a 64 bits
-#impar para que recorra el espacio completo del módulo y no perder entropía
-    a = a % (2 ** 64)       # Limitar a 64 bits
+    c = (c | 1) 
+    a = (a | 1)
     
     # Inspiración GLC: combinación modular de tres fuentes (a, c, num_codificación)
     tiempo1=tiempo_a_int()
