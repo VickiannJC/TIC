@@ -29,7 +29,20 @@ def calcular_exponente(lista_valores: List[float], num_codificacion: int = 0) ->
     # x = (c * x + a) mod m
     # Acumulación y mezcla base
     c = sum(lista_enteros)# Sumatorio
-    a = sum(x % escala for x in lista_enteros)  # Suma de los decimales escalados
+
+    #Suma de decimales
+    def extraer_decimales_y_sumar(lista):
+        suma_enteros = 0
+        for x in lista:
+            # Aseguramos que sea string para no perder precisión
+            s_val = str(x)
+            if "." in s_val:
+                # Dividimos en el punto y tomamos la parte derecha
+                parte_decimal = s_val.split(".")[1]
+                # Convertimos esa cadena directamente a entero
+                suma_enteros += int(parte_decimal)
+        return suma_enteros
+    a = extraer_decimales_y_sumar(lista_valores)  # Suma de los decimales escalados
 
     #  Ajustes y limitaciones de tamaño 
     c = c * phi64 # Multiplicar por el número áureo para aumentar dispoersión
