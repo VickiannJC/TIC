@@ -26,26 +26,25 @@ def calcular_exponente(lista_valores: List[float], num_codificacion: int = 0) ->
     # Conversión a enteros
     lista_enteros = [int(x * escala) for x in lista_valores]
 
-    # x = (a * x + c) mod m
+    # x = (c * x + a) mod m
     # Acumulación y mezcla base
     c = sum(lista_enteros)# Sumatorio
     a = sum(x % escala for x in lista_enteros)  # Suma de los decimales escalados
 
     #  Ajustes y limitaciones de tamaño 
-    a = (a | 1) % (2 ** 8)  # Forzar impar y limitar a 8 bits
+    c = c * phi64 # Multiplicar por el número áureo para aumentar dispoersión
+    c = (c | 1) % (2 ** 64)  # Forzar impar y limitar a 64 bits
 #impar para que recorra el espacio completo del módulo y no perder entropía
-# 8 bits porque la suma de los decimales escalados no será muy grande y se busca difuminar su valor( por si acaso)
-    c = c % (2 ** 64)       # Limitar a 64 bits
+    a = a % (2 ** 64)       # Limitar a 64 bits
     
-    # Mezcla áurea con codificación
     # Inspiración GLC: combinación modular de tres fuentes (a, c, num_codificación)
     tiempo1=tiempo_a_int()
     semilla_1 = (c * tiempo1 + a) % m #primera mezcla -> para difuminar la correlación con la entrada
     semilla_2 = ((c + num_codificacion) * tiempo1 + a) % m  # segunda mezcla -> para reforzar la entropía
 
     # Cálculo de resultados intermedios
-    resultado_1 = (a * semilla_1 + c) % m
-    resultado_2 = (a * semilla_2 + c) % m
+    resultado_1 = (c * semilla_1 + a) % m
+    resultado_2 = (c * semilla_2 + a) % m
 
     # Cálculo final modular
     resultado = pow(resultado_1, resultado_2, mask256)
@@ -58,7 +57,7 @@ def calcular_exponente(lista_valores: List[float], num_codificacion: int = 0) ->
     resultado = hashear_a_entero(resultado)
     resultado = resultado | 1  # Forzar impar
     resultado = resultado % n  # Asegurar que el exponente está dentro del orden del grupo de la curva
-    print("Tamaño del exponente (bits):", resultado.bit_length())
+    #print("Tamaño del exponente (bits):", resultado.bit_length())
     
     return resultado  
 

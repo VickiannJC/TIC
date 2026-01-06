@@ -9,7 +9,7 @@ alfabeto_extendido = constantes.ALFABETO_EXTENDIDO
 simbolos_permitidos = constantes.SIMBOLOS_PERMITIDOS
 numeros_permitidos = string.digits
 
-# Cifrado César Cíclico del párrafo
+# Cifrado de Sustitución por Desplazamiento con Preprocesamiento de Datos y Ofuscación de Ruido -> Basado en <Cifrado César Cíclico del párrafo
 def preprocesador_cadena(cadena_usuario, desplazamiento):
 
     cadena_cifrada = ""

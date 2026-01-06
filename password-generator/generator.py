@@ -169,7 +169,6 @@ def inspeccion_estructural_contrasena(cadena: str) -> str:
     #Corregir Códigos ASCII Duplicados 
     # Inicializa diccionarios para inspeccionar duplicados de código ASCII 
     duplicados_codigo = {}
-    # El bucle debe iterar sobre la MATRIZ YA CORREGIDA
     for i, (tipo, codigo) in enumerate(matriz): # Desempaquetamos para obtener el código
         if codigo in duplicados_codigo:
             duplicados_codigo[codigo].append(i)
