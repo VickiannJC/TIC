@@ -15,7 +15,7 @@ simbolos_permitidos = constantes.SIMBOLOS_PERMITIDOS
 
 input_json = 'resultado_palabras_sensible.json'
 output_claves_binario = 'claves_privadas_sensibles_hash_phi_evaluacion.bin'
-plataforma = "Instagram"
+plataforma = "facebook"
 
 def main():
     print("Inicio de la evaluación de la clave privada masiva...")
@@ -40,6 +40,7 @@ def main():
             exponente = procesador_numerico_eliptico.calcular_exponente(valores, valor_numerico_cod)
             #llave_privada = curva_eliptica.construir_clave_privada(exponente)
             llave_privada_bytes = exponente.to_bytes(256, byteorder='big')#BigEndian
+            # Convertir la clave privada a bytes para evaluacion sin usar cryptography
             with open(output_claves_binario, 'ab') as archivo_binario:
                 archivo_binario.write(llave_privada_bytes)
         print("Evaluación completada. Claves privadas almacenadas en el archivo binario.")
