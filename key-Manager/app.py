@@ -387,6 +387,11 @@ async def get_password_enveloped(req: GetPasswordEnvelope):
         "active": True
     })
 
+    print("🧩 user_id from handle:", user_id)
+    print("🧩 user_id in vault_password:",
+      password_entry["user_id"] if password_entry else None)
+
+
     if password_entry is None:
         raise HTTPException(status_code=404, detail="Password ciphertext not found")
     # Recuperar server ECC private (para handshake / channel)
