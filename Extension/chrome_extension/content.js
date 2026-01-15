@@ -1,21 +1,20 @@
 // ========================================================
-// content.js — Script inyectado en todas las páginas
+//  Content Script para interacción con páginas web
 // ========================================================
 (() => {
-    // ⛔ Guard de contexto
+    // Verificación de contexto de extensión
     if (typeof chrome === "undefined" || !chrome.runtime?.id) {
         console.warn("[EXT] content.js fuera de extensión. Abortando.");
-        return; // ✅ AHORA SÍ ES LEGAL
+        return; 
     }
 
-    // 🔽 TODO tu código real de content.js va aquí
     console.log("[EXT] content.js ejecutándose en contexto correcto");
     // Estado interno local del content script
     let myPasswordField = null;
 
     let lastInjectedPassword = null;
 
-    // --- Control de ping al background ---
+    // PING AL BACKGROUND PARA VERIFICAR CONEXIÓN
     let pingIntervalId = null;
     let pingFailures = 0;
     let hasWarnedPing = false;
@@ -74,7 +73,7 @@
 
 
     // ========================================================
-    // 1) DETECCIÓN DE CAMPOS DEL SITIO
+    // DETECCIÓN DE CAMPOS DE EMAIL / CONTRASEÑA
     // ========================================================
 
     // Encuentra un campo de contraseña visible 
@@ -214,7 +213,7 @@
                     console.warn("[CS] checkAuthStatus sin respuesta (extensión recargada o pestaña sin background).");
                     return;
                 }
-                console.log("[CS] Estado de autenticación para", email, "=>", response.status);
+                //console.log("[CS] Estado de autenticación para", email, "=>", response.status);
 
                 if (response.status === "authenticated") {
                     showNotificationBanner(" Autenticación completada, iniciando sesión...");
@@ -227,7 +226,7 @@
                     response.status === "completed" &&
                     response.keyMaterial?.password
                 ) {
-                    console.log("[PSY][FB] ✅ Contraseña lista, iniciando autofill reactivo");
+                    console.log("[PSY][FB] Contraseña lista, iniciando autofill reactivo");
                     waitForFacebookResetAndFill(response.keyMaterial.password);
                 }
 
@@ -238,7 +237,7 @@
     }
 
     // ========================================================
-    // 3) RESPUESTAS DEL BACKGROUND
+    //  RESPUESTAS DEL BACKGROUND
     // ========================================================
 
     function handleServerResponse(data) {
@@ -265,7 +264,7 @@
 
         // ERROR GENERAL
         if (data.status === "error") {
-            alert("GenIA: " + data.error || "Ocurrió un error inesperado durante la autenticación.");
+            alert("GenPIA: " + data.error || "Ocurrió un error inesperado durante la autenticación.");
             removeQRModal();
             resetButtons();
         }
@@ -315,7 +314,7 @@
         if (confirm) fillInput(confirm, pwd);
     
         // NO hacemos clic en “Continuar” por seguridad / anti-bot / UX.
-        showNotificationBanner("🔐 Contraseña nueva autocompletada. Pulsa “Continuar” en Facebook.");
+        showNotificationBanner(" Contraseña nueva autocompletada. Pulsa “Continuar” en Facebook.");
     }
     */
 
@@ -361,7 +360,7 @@
             if (confirm) fillInput(confirm, pwd);
 
             showNotificationBanner(
-                "🔐 Contraseña nueva autocompletada.\nPulsa “Continuar” en Facebook."
+                "Contraseña nueva autocompletada.\nPulsa “Continuar” en Facebook."
             );
 
             clearInterval(timer);
@@ -385,6 +384,13 @@
         if (msg.action === "authPushFailed") {
             console.error("[CS] Error enviando push:", msg.error);
             showNotificationBanner("❌ No se pudo enviar la notificación a tu móvil");
+        }
+
+        if(msg.action === "resetButtons") {
+            resetButtons();
+        }
+        if (msg.action === "authLoginSuccess") {
+            showNotificationBanner("✅ Contraseña autocompletada. Iniciando sesión...");
         }
 
 
@@ -439,7 +445,7 @@
     });
 
     // ========================================================
-    // UI — Botón "GenIA" + QR Modal
+    // UI — Botón "GenPIA" + QR Modal
     // ========================================================
 
     function injectButton(target) {
@@ -450,7 +456,7 @@
 
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.innerText = "🗝️ GenIA";
+        btn.innerText = "🗝️ GenPIA";
         btn.style.cssText = `
     margin-left: 8px;
     padding: 7px 12px;
@@ -640,7 +646,7 @@
     }
 
     // ========================================================
-    // 6) MODAL QR — Para registro móvil
+    // MODAL QR — Para registro móvil
     // ========================================================
 
     function showQRModal(qrBase64) {

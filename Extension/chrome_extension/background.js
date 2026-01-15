@@ -1,8 +1,9 @@
 // ========================================================
 // CONFIG
 // ========================================================
+//import ms from "ms";
 import { KMClient } from "./km_client.js";
-console.log("[DEBUG] KMClient import OK:", KMClient);
+console.log("[DEBUG] KMClient import OK");
 
 const SERVER_BASE_URL = 'https://genia-api-extension-avbke7bhgea4bngk.eastus2-01.azurewebsites.net';
 const EXT_CLIENT_KEY = "9afe2270278c6647dc54094103a7e7605d61f9b4c0642baf59559453d41c4c94";
@@ -87,11 +88,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return; // importar: indicar que ya respondimos
     }
     // --------------------------------------------
-    // REGISTRO (BOTÓN “Registrar Móvil” DEL POPUP)
+    // REGISTRO 
     // --------------------------------------------
     if (request.action === "requestRegistration") {
         const mainTabId = request.tabId || inferredTabId;
-        console.log(`[BG] Registro solicitado para Tab ${mainTabId}`);
+        //console.log(`[BG] Registro solicitado para Tab ${mainTabId}`);
+        console.log(`[BG] Registro solicitado para Tab`);
 
         // Inicializar estado
         sessionStore.set(mainTabId, {
@@ -112,13 +114,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     // --------------------------------------------
-    // LOGIN (BOTÓN “Psy-Auth” )
+    // LOGIN 
     // --------------------------------------------
     if (request.action === "requestAuthLogin") {
         const email = request.email;
         const platform = request.platform;
         const tabId = inferredTabId;
-        console.log("[BG] Login solicitado para email", email, "desde Tab", tabId);
+        //console.log("[BG] Login solicitado para email", email, "desde Tab");
+        console.log("[BG] Login solicitado para email");
         if (!email) {
             console.warn("[BG] requestAuthLogin sin email, abortando.");
             return;
@@ -138,7 +141,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     // --------------------------------------------
-    // GENERAR CONTRASEÑA (BOTÓN “Psy-Auth” )
+    // GENERAR CONTRASEÑA 
     // --------------------------------------------
     if (request.action === "requestPasswordGeneration") {
         const mainTabId = request.tabId || inferredTabId;
@@ -178,17 +181,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // ===================================================================
 // NOTIFICAR AL USUARIO DE GENERACION DE CONTRASEÑA Y PASOS A SEGUIR
 // ===================================================================
-function notifyGeneratedPassword(platform) {
+function notifyGeneratedPassword(platform, password) {
     const title = "Contraseña generada ✅";
     const message =
         `Ya se generó tu contraseña para ${platform}.\n` +
-        `Ahora: en Facebook haz clic en “¿Olvidaste tu contraseña?”.\n` +
-        `Sigue el proceso y cuando veas “Nueva contraseña”, Psy-Password la llenará automáticamente.`;
+        `` +
+        `Cambia tu contraseña en el sitio web lo antes posible.`;
 
     try {
         chrome.notifications.create({
             type: "basic",
-            iconUrl: "llave.png", // ajusta al nombre real de tu icono
+            iconUrl: "llave.png", 
             title,
             message,
             priority: 2
@@ -207,19 +210,20 @@ async function startRegistrationFlow(mainTabId) {
     const s = sessionStore.get(mainTabId);
     if (!s) return;
 
-    console.log("[BG] Registro iniciado para Tab", mainTabId);
+    //console.log("[BG] Registro iniciado para Tab", mainTabId);
+    console.log("[BG] Registro iniciado para Tab");
 
     // Cerrar QR previo si existiera
     if (s.qrTabId) {
         try { chrome.tabs.remove(s.qrTabId); } catch (e) { }
     }
 
-    // 1) Abrir una pestaña dedicada al QR
+    // Abrir una pestaña dedicada al QR
     chrome.tabs.create({ url: chrome.runtime.getURL("qr_page.html") }, async (qrTab) => {
         s.qrTabId = qrTab.id;
         sessionStore.set(mainTabId, s);
 
-        // 2) Generar PRIMER QR
+        // Generar PRIMER QR
         await generateQrAndSend(mainTabId, qrTab.id);
 
         // Evitar múltiples timers
@@ -228,7 +232,7 @@ async function startRegistrationFlow(mainTabId) {
             s.qrTimerId = null;
         }
 
-        // 3) Timer de regeneración cada 60s
+        // Timer de regeneración cada 60s
         s.qrTimerId = setInterval(() => {
             const session = sessionStore.get(mainTabId);
             if (!session || session.status !== "registering" || !session.qrTabId) {
@@ -249,10 +253,10 @@ async function startRegistrationFlow(mainTabId) {
             s.pollTimerId = null;
         }
 
-        // 4) Polling al estado del QR
+        // Polling al estado del QR
         s.pollTimerId = setInterval(async () => {
             const session = sessionStore.get(mainTabId);
-            console.log("[BG] Polling tab:", mainTabId, "→ sesión encontrada:", session);
+            //console.log("[BG] Polling tab:", mainTabId, "→ sesión encontrada:", session);
             if (!session || session.status !== "registering" || !session.qrTabId) {
                 return;
             }
@@ -402,7 +406,7 @@ function safeSendMessage(tabId, message, attempt = 0) {
 }
 
 // ========================================================
-// 2) LOGIN – ciclo completo
+// LOGIN – obtener email desde content script
 // ========================================================
 
 async function fetchWithRetry(url, options, retries = 3) {
@@ -519,7 +523,7 @@ function startLoginPolling(email, platform, tabId) {
                 `${SERVER_BASE_URL}/check-password-status?email=${encodeURIComponent(email)}` +
                 `&action=${encodeURIComponent("autenticacion")}` +
                 `&tabId=${encodeURIComponent(String(tabId))}`;
-            console.log("🔍 [BG] Polling URL:", url);
+            //console.log("[BG] Polling URL:", url);
 
             let raw;
             let res;
@@ -527,7 +531,7 @@ function startLoginPolling(email, platform, tabId) {
                 res = await fetch(url, { headers: { "X-Client-Key": EXT_CLIENT_KEY } });
                 raw = await res.text();
             } catch (err) {
-                console.error("❌ [BG] Error en fetch:", err);
+                console.error("[BG] Error en fetch:", err);
                 return;
             }
 
@@ -535,7 +539,7 @@ function startLoginPolling(email, platform, tabId) {
             try {
                 data = JSON.parse(raw);
             } catch (err) {
-                console.error("❌ Error parseando JSON en polling:", err, raw);
+                console.error("Error parseando JSON en polling:", err, raw);
                 return;
             }
 
@@ -554,12 +558,11 @@ function startLoginPolling(email, platform, tabId) {
                 clearInterval(interval);
                 loginPollingIntervals.delete(tabId);
 
-                console.log("🔐 Usuario autenticado. Preparando canal seguro con el KM...");
+                console.log("Usuario autenticado. Preparando canal seguro con el KM...");
 
                 try {
-                    // ✅ Validación explícita del session_token con backend
+                    // Validación del session_token con backend
                     if (!data.session_token) throw new Error("Missing session_token from backend");
-                    console.log("[KM] Requesting password with plugin_id chrome_ext")
 
                     const v = await fetch(`${SERVER_BASE_URL}/validate-km-token`, {
                         method: "POST",
@@ -595,7 +598,7 @@ function startLoginPolling(email, platform, tabId) {
 
                     // Asegurar handshake (si ya existe no repite)
                     await KMClient.ensureHandshake();
-                    console.log("🤝 Handshake completado. Solicitando contraseña al KM...");
+                    console.log("Handshake completado. Solicitando contraseña al KM...");
                     const platformNorm = platform.toLowerCase().trim();
                     // Solicitar contraseña protegida con envelope
                     const s2 = sessionStore.get(tabId);
@@ -623,20 +626,22 @@ function startLoginPolling(email, platform, tabId) {
                     const dataKm = await resp.json();
                     const encrypted_password = dataKm.encrypted_password;
 
-                    console.log("📩 Recibido encrypted_password desde KM:", encrypted_password);
+                    //console.log("Recibido encrypted_password desde KM:", encrypted_password);
 
                     //  Descifrar con enclave local (AES-GCM con channelKey)
                     const pwBytes = await KMClient.envelopeDecrypt(encrypted_password);
                     const password = new TextDecoder().decode(pwBytes);
 
-                    console.log("🔓 Contraseña real descifrada:", password);
+                    //console.log("Contraseña real descifrada:", password);
 
                     //  Enviar contraseña real al content script
                     updateSessionState(tabId, {
                         status: "completed",
                         keyMaterial: { password }
                     });
-
+                    try {
+                     chrome.tabs.sendMessage(tabId, { action: "authLoginSuccess" });
+                    } catch (e) { }
                     const fin = await fetch(`${SERVER_BASE_URL}/finalize-km-session`, {
                         method: "POST",
                         headers: {
@@ -649,6 +654,8 @@ function startLoginPolling(email, platform, tabId) {
                     if (!fin.ok || finData.ok !== true) {
                         console.warn("[BG] finalize-km-session falló (no bloquea autofill):", finData);
                     }
+
+                    
 
 
 
@@ -724,7 +731,7 @@ function startGenerationPolling(mainTabId, email, platform) {
             if (data.status === "authenticated") {
                 clearInterval(interval);
 
-                // MARCAMOS SOLO EL EVENTO, PERO NO HACEMOS NADA MÁS
+                // Actualizar estado
                 updateSessionState(mainTabId, {
                     status: "completed",
                     keyMaterial: { token: data.session_token }
@@ -734,7 +741,7 @@ function startGenerationPolling(mainTabId, email, platform) {
                     platform
                 });
 
-                notifyGeneratedPassword(platform);
+                notifyGeneratedPassword(platform, data.generated_password);
 
                 return;
             }
@@ -755,7 +762,7 @@ function startGenerationPolling(mainTabId, email, platform) {
                 error: "Error comunicando con el servidor."
             });
 
-            // 🔥 Limpieza consistente
+            // Limpieza de sesión tras error
             setTimeout(() => sessionStore.delete(mainTabId), 2000);
         }
 
@@ -799,7 +806,7 @@ function updateSessionState(tabId, newState) {
 // ========================================================
 chrome.tabs.onRemoved.addListener(async (closedTabId) => {
 
-    // Si era un polling de login, limpiarlo
+    // Detener polling si existe
     const poll = loginPollingIntervals.get(closedTabId);
     if (poll) {
         clearInterval(poll);
@@ -809,9 +816,9 @@ chrome.tabs.onRemoved.addListener(async (closedTabId) => {
     for (const [mainTabId, session] of sessionStore.entries()) {
         if (session.qrTabId === closedTabId) {
 
-            console.log("🚫 Pestaña de QR cerrada. Cancelando flujo…", closedTabId);
+            //console.log(" Pestaña de QR cerrada. Cancelando flujo…", closedTabId);
 
-            // 1) Detener timers de QR y polling
+            // Detener timers de QR y polling
             if (session.qrTimerId) {
                 clearInterval(session.qrTimerId);
             }
@@ -819,21 +826,21 @@ chrome.tabs.onRemoved.addListener(async (closedTabId) => {
                 clearInterval(session.pollTimerId);
             }
 
-            // 2) Eliminar sesión local de la extensión
+            //  Eliminar sesión local de la extensión
             sessionStore.delete(mainTabId);
             session.qrTabId = null;
 
 
-            // 3) Limpiar sesiones del servidor
+            // Limpiar sesiones del servidor 
             try {
                 await fetch(`${SERVER_BASE_URL}/cancel-qr-session`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ email: session.email })
                 });
-                console.log("🧹 Sesión QR limpiada del servidor:", session.email);
+                console.log("Sesión QR limpiada del servidor:", session.email);
             } catch (err) {
-                console.error("❌ Error limpiando sesión del servidor:", err);
+                console.error(" Error limpiando sesión del servidor:", err);
             }
         }
     }

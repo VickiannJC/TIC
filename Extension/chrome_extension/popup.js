@@ -39,7 +39,7 @@ async function getEmailFromTab() {
 document.getElementById("btn-info").onclick = () => {
     alert("Psy-Password protege tus cuentas mediante biometría y dispositivos vinculados.");
 };
-
+/** 
 // Secuencias (placeholder)
 document.getElementById("btn-seq").onclick = () => {
     alert("Función disponible próximamente.");
@@ -49,6 +49,7 @@ document.getElementById("btn-seq").onclick = () => {
 document.getElementById("btn-pass").onclick = () => {
     alert("Usa tu app móvil vinculada para gestionar recuperación de contraseñas.");
 };
+*/
 
 // ========================================================
 // REGISTRO — Botón "Registrar Móvil"

@@ -21,7 +21,7 @@ from guardar_analisis import col as psy_col
 from guardar_analisis import buscar_usuario_por_hmac
 import requests
 import socket
-print("🔥 ANALYZER INSTANCE:", socket.gethostname())
+#print(" ANALYZER INSTANCE:", socket.gethostname())
 GEN_SECRET = os.environ.get("GEN_HMAC_SECRET")
 GENERATION_SERVER_URL = os.environ.get("GEN_SERVER_URL")
 NODE_ANALYZER_SECRET = os.environ.get("NODE_ANALYZER_SECRET")
@@ -33,7 +33,7 @@ if not NODE_ANALYZER_SECRET:
 app = FastAPI()
 _analyzer = None
 
-print("🔐 NODE_ANALYZER_SECRET (analyzer):", NODE_ANALYZER_SECRET[:6])
+#print(" NODE_ANALYZER_SECRET (analyzer):", NODE_ANALYZER_SECRET[:6])
 
 DEBUG_LOGS = os.environ.get("ANALYSIS_DEBUG", "false").lower() == "true"
 
@@ -99,7 +99,7 @@ def health():
     return {"status": "ok", "ts": datetime.utcnow().isoformat()}
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    print(f"[{socket.gethostname()}] {request.method} {request.url.path}")
+    #print(f"[{socket.gethostname()}] {request.method} {request.url.path}")
     return await call_next(request)
 
 
@@ -260,8 +260,8 @@ async def generator_init(request: Request, data: GeneratorInit):
     
     if DEBUG_LOGS:
         print("DEBUG Enviando al generador final:")
-        print("DEBUG Headers:", headers)
-        print("DEBUG Body:", outbound_payload)
+        #print("DEBUG Headers:", headers)
+        #print("DEBUG Body:", outbound_payload)
 
     try:
         resp = requests.post(f"{GENERATION_SERVER_URL}/generate", json=outbound_payload, headers=headers, timeout=5)

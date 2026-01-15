@@ -76,7 +76,7 @@ def verify_request_signature(request_body: bytes, header_signature: str, header_
     es_valido = hmac.compare_digest(hmac_calculado, header_signature)
     
     if not es_valido:
-        print(f"❌ Firma inválida. Recibida: {header_signature} | Calculada: {hmac_calculado}")
+        print(f"❌ Firma inválida.")
         
     return es_valido
 

@@ -84,8 +84,8 @@ class PsychologicalAnalyzer:
         #Buscar ID 
         id_hmac = seguridad.proteger_id_usuario(id_usuario)
         
-        print(f"[CONTROL] Verificando existencia de usuario: {id_usuario} -> {id_hmac[:10]}...")
-        # 2. CONSULTA: Buscamos si ya existe en Mongo
+        #print(f"[CONTROL] Verificando existencia de usuario: {id_usuario} -> {id_hmac[:10]}...")
+        # CONSULTA: Buscamos si ya existe en Mongo
         usuario_existente = guardar_analisis.buscar_usuario_por_hmac(id_hmac)
 
         if usuario_existente:
@@ -179,13 +179,13 @@ class PsychologicalAnalyzer:
         if DEBUG_LOGS:
             print("📢 [DEBUG] INICIO DEL ANÁLISIS")
             print(f"📥 Datos recibidos de Node.js:")
-            print(f"   - ID Usuario: {id_usuario}")
-            print(f"   - Respuestas: {user_answers}")
-            print("="*50 + "\n")
-            print(f"🧠 [DEBUG] Resultados crudos: {valores_lista}", flush=True)
-            print(f"✔ Análisis guardado en MongoDB para usuario ID HMAC: {id_hmac[:10]}...")
-            print("✔ Perfil psicológico generado:")
-            print(final_description_str)
+            #print(f"   - ID Usuario: {id_usuario}")
+            #print(f"   - Respuestas: {user_answers}")
+            #print("="*50 + "\n")
+            #print(f"🧠 [DEBUG] Resultados crudos: {valores_lista}", flush=True)
+            #print(f"✔ Análisis guardado en MongoDB para usuario ID HMAC: {id_hmac[:10]}...")
+            print("✔ Perfil psicológico generado")
+            #print(final_description_str)
 
         return { "stored": True }
         

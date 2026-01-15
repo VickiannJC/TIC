@@ -1,6 +1,6 @@
 
     // ==============================
-    // 1) UTILIDADES BASE64 / BYTES
+    //  UTILIDADES
     // ==============================
     const te = new TextEncoder();
     const td = new TextDecoder();
@@ -37,7 +37,7 @@
     }
 
     // ==============================
-    // 2) ESTADO INTERNO DEL CLIENTE
+    // ESTADO INTERNO DEL CLIENTE
     // ==============================
     let _config = {
         kmBaseUrl: null,
@@ -59,7 +59,7 @@
     let _serverPublicKeyRaw = null; // ArrayBuffer
 
     // ==============================
-    // 3) CLAVES ECC DEL PLUG-IN
+    // CLAVES ECC DEL PLUG-IN
     // ==============================
     async function loadOrCreatePluginKeyPair() {
         if (_pluginKeyPair.privateKey && _pluginKeyPair.publicKey && _pluginKeyPair.publicRaw) {
@@ -127,7 +127,7 @@
     }
 
     // ==============================
-    // 4) HANDSHAKE CON EL KM
+    // HANDSHAKE CON EL KM
     // ==============================
     async function fetchServerPublicKey() {
         if (_serverPublicKeyRaw) return _serverPublicKeyRaw;
@@ -149,7 +149,7 @@
 
     async function registerPluginPublicKey() {
         const pubB64 = arrayBufferToBase64(_pluginKeyPair.publicRaw.buffer);
-        // 1) Pedir token firmado al backend (Node) — NO al KM
+        //  Pedir token firmado al backend (Node-> Backend) — NO al KM
         if (!_config.nodeBaseUrl) throw new Error("nodeBaseUrl no configurado en KMClient.init()");
         if (!_config.sessionToken) throw new Error("sessionToken no configurado (login no validado)");
 
@@ -173,7 +173,7 @@
             throw new Error(`km-plugin-reg-token failed: ${tokenResp.status} - ${tokenData.error || "unknown"}`);
         }
 
-        // 2) Registrar public key en el KM, adjuntando reg_token
+        // Registrar public key en el KM, adjuntando reg_token
         const url = `${_config.kmBaseUrl}/auth_plugin_key`;
         const resp = await fetch(url, {
             method: "POST",
@@ -197,7 +197,7 @@
         const pluginKeys = await loadOrCreatePluginKeyPair();
         const serverPubRaw = await fetchServerPublicKey();
 
-        // 1) Importar clave pública del servidor (P-256 RAW)
+        // Importar clave pública del servidor  (P-256 RAW)
         const serverPubKey = await crypto.subtle.importKey(
             "raw",
             serverPubRaw,
@@ -206,14 +206,14 @@
             []
         );
 
-        // 2) ECDH → shared secret
+        // ECDH → shared secret
         const sharedBits = await crypto.subtle.deriveBits(
             { name: "ECDH", public: serverPubKey },
             pluginKeys.privateKey,
             256 // 32 bytes
         );
 
-        // 3) HKDF(SHA-256) con:
+        // HKDF(SHA-256) con:
         //    - salt = plugin_public_raw
         //    - info = "plugin-km-channel"
         const hkdfBaseKey = await crypto.subtle.importKey(
@@ -259,7 +259,7 @@
     }
 
     // ==============================
-    // 5) ENVELOPE AES-256-GCM
+    // ENVELOPE AES-256-GCM
     // ==============================
     async function envelopeEncrypt(plaintextBytes) {
         const key = await ensureHandshake();
@@ -363,15 +363,10 @@
     }
 
     // ==============================
-    // 7) API PÚBLICA
+    // API PÚBLICA
     // ==============================
     const KMClient = {
-        /**
-         * Inicializa el cliente KM con la info mínima necesaria.
-         *
-         * Debes llamarlo una vez por tab / sesión en background.js:
-         * KMClient.init({ kmBaseUrl, userId, pluginId })
-         */
+        // Inicializa el cliente KM
         async init({ kmBaseUrl, userHandle, pluginId, nodeBaseUrl, sessionToken, tabId, extClientKey }) {
             if (!kmBaseUrl) throw new Error("kmBaseUrl es obligatorio");
             if (!userHandle) throw new Error("userHandle es obligatorio");
@@ -397,10 +392,7 @@
             // await ensureHandshake();
         },
 
-        /**
-         * Fuerza el handshake y deja listo el canal seguro.
-         * Útil para hacer warm-up después de login + biometría.
-         */
+        // Asegura que el handshake se ha completado
         async ensureHandshake() {
             await ensureHandshake();
         },

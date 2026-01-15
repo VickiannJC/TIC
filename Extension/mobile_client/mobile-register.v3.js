@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log("[MOBILE] Registrando Service Worker...");
         statusMessage.textContent = 'Registrando Service Worker...';
         const registration = await navigator.serviceWorker.register(`${SERVER_BASE_URL}/mobile_client/sw3.js`);
-        console.log("[MOBILE] Service Worker registrado:", registration);
+        //console.log("[MOBILE] Service Worker registrado:", registration);
 
         //Obtener clave VAPID pública:
         const VAPID_KEY = 'BHp2vU13C4v9lkA3TiCeDjdrTKx-pjOJKU9danM81efQiPD_6udB7w42xt6DZnz2bAjgf8mdjz-d_Qv7ePkVDOM';
@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(VAPID_KEY)
         });
-        console.log("[MOBILE] Suscripción obtenida:", subscription);
+        //console.log("[MOBILE] Suscripción obtenida:", subscription);
 
         // Enviar suscripción al servidor 
         statusMessage.textContent = 'Vinculando dispositivo...';
@@ -79,18 +79,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             body: JSON.stringify({ sessionId, subscription })
         });
         const raw = await response.text();
-        console.log("🔴 URL:", response.url);
-        console.log("🔴 STATUS:", response.status);
-        console.log("🔴 CONTENT-TYPE:", response.headers.get("content-type"));
-        console.log("🔴 RAW (primeros 300 chars):", raw.slice(0, 300));
+        //console.log("URL:", response.url);
+        //console.log(" STATUS:", response.status);
+        //console.log("CONTENT-TYPE:", response.headers.get("content-type"));
+        //console.log("RAW (primeros 300 chars):", raw.slice(0, 300));
         let data;
         try {
             data = JSON.parse(raw);
         } catch (e) {
-            console.error("[MOBILE] Respuesta NO JSON del servidor:", raw);
+            //console.error("[MOBILE] Respuesta NO JSON del servidor:", raw);
             throw new Error("Respuesta inválida del servidor");
         }
-        console.log("[MOBILE] /register-mobile respuesta:", data);
+        //console.log("[MOBILE] /register-mobile respuesta:", data);
         if (data.status === "already_registered") {
             const userMessage = "Este dispositivo ya está registrado. No es necesario continuar.";
 
@@ -99,10 +99,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             alert(userMessage);
 
-            // Opcional: mostrar pantalla de error elegante
+            //  mostrar pantalla de error 
             showError(userMessage);
 
-            // 🔥 Cerrar la pantalla después de 1.2s y refrescar página
+            // Cerrar la pantalla después de 1.2s y refrescar página
             setTimeout(() => {
                 try {
                     window.location.reload();  // refrescar
@@ -118,8 +118,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
 
-        console.log("[MOBILE] continueUrl recibido:", data.continueUrl);
-        console.log("[MOBILE] email recibido:", data.email);
+        //console.log("[MOBILE] continueUrl recibido:", data.continueUrl);
+        //console.log("[MOBILE] email recibido:", data.email);
 
 
         showSuccess(
@@ -128,16 +128,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         );
 
         try {
-            console.log("[MOBILE] ENVIANDO PUSH TEST con email:", data.email);
+            //console.log("[MOBILE] ENVIANDO PUSH TEST con email:", data.email);
             console.log("[MOBILE] Enviando push test con:", {
                 email: data.email,
                 continueUrl: data.continueUrl
             });
 
             console.log("[MOBILE] Enviando TEST PUSH con datos:");
-            console.log("email:", data.email);
-            console.log("continueUrl:", data.continueUrl);
-            console.log("sessionId:", data.sessionId);
+            //console.log("email:", data.email);
+            //console.log("continueUrl:", data.continueUrl);
+            //console.log("sessionId:", data.sessionId);
 
             await fetch(`${SERVER_BASE_URL}/send-test-push`, {
                 method: "POST",
@@ -156,7 +156,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error("[MOBILE] Error enviando push de prueba:", err);
         }
 
-        console.log("[MOBILE] sessionId:", sessionId);
+        //console.log("[MOBILE] sessionId:", sessionId);
         console.log("[MOBILE] SW registrado");
 
 

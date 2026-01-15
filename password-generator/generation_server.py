@@ -99,8 +99,8 @@ def verify_payload_signature(body: Dict[str, Any], header_sig: Optional[str]) ->
 
 
     if DEBUG_LOGS:
-        print("DEBUG Expected signature:", expected_sig)
-        print("DEBUG Header signature:", header_sig)
+        #print("DEBUG Expected signature:", expected_sig)
+        #print("DEBUG Header signature:", header_sig)
     if not hmac.compare_digest(expected_sig, header_sig):
         print("❌ Firma inválida")
         raise HTTPException(status_code=401, detail="Invalid payload signature")

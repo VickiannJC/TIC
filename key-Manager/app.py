@@ -142,10 +142,10 @@ async def process_generation(
         print("❌ ERROR: Invalid API key")
         raise HTTPException(status_code=401, detail="Invalid API key")
     
-    print("\n======================")
-    print("📥 DEBUG: Payload recibido en KeyManager")
-    print(req)
-    print("======================\n")
+    #print("\n======================")
+    #print(" DEBUG: Payload recibido en KeyManager")
+    #print(req)
+    #print("======================\n")
 
     # Validar propósito
     if req.purpose != "PASSWORD":
@@ -189,7 +189,7 @@ async def process_generation(
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption()
         )
-        print("✔ private_key_bytes length:", len(priv_bytes))
+        #print("✔ private_key_bytes length:", len(priv_bytes))
 
 
         # Guardar private key en vault_keys
@@ -204,7 +204,7 @@ async def process_generation(
             key_algo="ECC",
             metadata=metadata
         )
-        print("✔ Key guardada con key_id:", key_id)
+        #print("✔ Key guardada con key_id:", key_id)
         platform = req.platform.lower().strip()
         # Guardar ciphertext en vault_passwords
         print("➡️ Guardando ciphertext en vault_password...")
@@ -362,7 +362,7 @@ class GetPasswordEnvelope(BaseModel):
 
 @app.post("/get_password_enveloped")
 async def get_password_enveloped(req: GetPasswordEnvelope):
-    print("DEBUG req:", req)
+    #print("DEBUG req:", req)
     """
     Recupera la contraseña final del usuario:
     - Busca ciphertext ECC en vault_password
@@ -387,9 +387,9 @@ async def get_password_enveloped(req: GetPasswordEnvelope):
         "active": True
     })
 
-    print("🧩 user_id from handle:", user_id)
-    print("🧩 user_id in vault_password:",
-      password_entry["user_id"] if password_entry else None)
+    #print("user_id from handle:", user_id)
+    #print("user_id in vault_password:",
+      #password_entry["user_id"] if password_entry else None)
 
 
     if password_entry is None:

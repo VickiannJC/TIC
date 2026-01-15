@@ -1,4 +1,4 @@
-// Recibimos mensajes desde background.js
+// Recibe mensajes desde background.js
 
 chrome.runtime.onMessage.addListener((msg) => {
     if (msg.action === "updateQR") {

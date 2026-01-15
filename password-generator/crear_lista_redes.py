@@ -50,7 +50,7 @@ def nueva_red(nombre_red: str, nombre_archivo_json: str = "redes_sociales_con_ta
     if nuevo_tag is not None:
         tags[nombre_red] = nuevo_tag
         guardar_tags(nombre_archivo_json, tags)
-        print(f"Nueva red '{nombre_red}' agregada con el tag {nuevo_tag}.")
+        print(f"Nueva red '{nombre_red}' agregada nuevo tag.")
         return 
     else:
         print(f"No se pudo generar un tag único para la red '{nombre_red}' después de {max_intentos} intentos.")

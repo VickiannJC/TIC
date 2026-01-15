@@ -1,5 +1,4 @@
 // sw_v58s.js — Service Worker para el cliente móvil de Psy-Password
-// Cambia el nombre del archivo o añade este comentario para forzar actualización
 
 console.log("[SW] Service Worker CARGADO y EJECUTADO.");
 
@@ -18,7 +17,7 @@ self.addEventListener("activate", (event) => {
 
 
 
-// Mandatory fetch handler so clients.openWindow() can work in notificationclick
+// fetch mandatorio — necesario para que el SW funcione correctamente
 self.addEventListener('fetch', (event) => {
 
 });
@@ -28,18 +27,18 @@ self.addEventListener('fetch', (event) => {
 // ========================================================
 self.addEventListener('push', (event) => {
 
-    console.log("🔥🔥🔥 [SW] PUSH EVENT DISPARADO");
-    console.log("🔹 event.data =", event.data);
+    console.log(" [SW] PUSH EVENT DISPARADO");
+    //console.log("event.data =", event.data);
 
     let raw;
     try {
         raw = event.data ? event.data.text() : "NO_DATA";
-        console.log("📩 PUSH RAW TEXT:", raw);
+        //console.log(" PUSH RAW TEXT:", raw);
     } catch(e) {
-        console.log("❌ ERROR leyendo event.data:", e);
+        console.log("ERROR leyendo event.data:", e);
     }
 
-    console.log("🔥 [SW] RAW TEXT:", event.data ? event.data.text() : "NO DATA");
+    //console.log("[SW] RAW TEXT:", event.data ? event.data.text() : "NO DATA");
 
 
     let data = {};
@@ -47,8 +46,8 @@ self.addEventListener('push', (event) => {
 
     try {
         data = event.data ? event.data.json() : {};
-        console.log("[SW] Push parseado:", data);
-        console.log("[SW] continueUrl recibido:", data.continueUrl);
+        //console.log("[SW] Push parseado:", data);
+        //console.log("[SW] continueUrl recibido:", data.continueUrl);
 
     } catch (e) {
         console.error('[SW] Error parseando datos del push:', e);
@@ -66,7 +65,7 @@ self.addEventListener('push', (event) => {
     const session_token = data.session_token || null;
     const challengeId = data.challengeId || null;
 
-    console.log('[SW] Push recibido:', { actionType, sessionId, email, continueUrl });
+    //console.log('[SW] Push recibido:', { actionType, sessionId, email, continueUrl });
 
     const options = {
         body,
@@ -115,22 +114,22 @@ self.addEventListener('push', (event) => {
 // NOTIFICATION CLICK — usuario pulsa en la notificación
 // ========================================================
 self.addEventListener('notificationclick', (event) => {
-    console.log("🖱 [SW] CLICK en notificación");
-    console.log("   ➤ event.action:", event.action);
-    console.log("🔹 event.notification.data =", event.notification.data);
+    console.log("[SW] CLICK en notificación");
+    //console.log(" event.action:", event.action);
+    //console.log("event.notification.data =", event.notification.data);
     event.notification.close();
 
     const { actionType, email, continueUrl, session_token } = event.notification.data || {};
     const sessionId = event.notification.data?.sessionId;
 
 
-    console.log("[SW] CLICK DATA:", {
+    /*console.log("[SW] CLICK DATA:", {
         actionType,
         email,
         continueUrl,
         session_token,
         action: event.action
-    });
+    });*/
 
     if (!continueUrl) {
         console.warn("[SW] No se puede abrir continueUrl porque es undefined");
@@ -159,25 +158,27 @@ self.addEventListener('notificationclick', (event) => {
    
     // CASOS POR TIPO DE ACCIÓN
     if (actionType === 'auth') {
-        console.log('[SW] Click en notificación de LOGIN:', {
+        /*console.log('[SW] Click en notificación de LOGIN:', {
             isConfirm,
             actionType,
             sessionId,
             email,
             continueUrl
-        });
+        });*/
 
         if (isConfirm) {
-            // 🔹 Priorizar la URL que mandó el servidor
+            // Priorizar la URL que mandó el servidor
             if (continueUrl) {
-                console.log('[SW] Abriendo continueUrl (login):', continueUrl);
+                //console.log('[SW] Abriendo continueUrl (login):', continueUrl);
+                console.log('[SW] Abriendo continueUrl (login)');
                 open(continueUrl);
             } else {
                 // Fallback por si alguna vez no viene continueUrl
                 const fallbackUrl = `${SERVER_BASE_URL}/mobile_client/auth-confirm?session_token=${encodeURIComponent(
                     session_token || ''
                 )}&status=confirmed`;
-                console.log('[SW] continueUrl ausente, usando fallback auth-confirm:', fallbackUrl);
+                //console.log('[SW] continueUrl ausente, usando fallback auth-confirm:', fallbackUrl);
+                console.log('[SW] continueUrl ausente, usando fallback auth-confirm');
                 open(fallbackUrl);
             }
         } else if (event.action === 'deny') {
@@ -192,32 +193,35 @@ self.addEventListener('notificationclick', (event) => {
     }
 
     if (actionType === 'generate') {
-        console.log('[SW] Click en notificación de GENERATE:', {
+        /*console.log('[SW] Click en notificación de GENERATE:', {
             isConfirm,
             actionType,
             sessionId,
             email,
             continueUrl
-        });
+        });*/
 
         if (isConfirm) {
-            // 🔹 Priorizar la URL que mandó el servidor
+            // Priorizar la URL que mandó el servidor
             if (continueUrl) {
-                console.log('[SW] Abriendo continueUrl (login):', continueUrl);
+                //console.log('[SW] Abriendo continueUrl (login):', continueUrl);
+                console.log('[SW] Abriendo continueUrl (login)');
                 open(continueUrl);
             } else {
                 // Fallback por si alguna vez no viene continueUrl
                 const fallbackUrl = `${SERVER_BASE_URL}/mobile_client/gen-confirm?session_token=${encodeURIComponent(
                     session_token || ''
                 )}&status=confirmed`;
-                console.log('[SW] continueUrl ausente, usando fallback gen-confirm:', fallbackUrl);
+                //console.log('[SW] continueUrl ausente, usando fallback gen-confirm:', fallbackUrl);
+                console.log('[SW] continueUrl ausente, usando fallback gen-confirm');
                 open(fallbackUrl);
             }
         } else if (event.action === 'deny') {
-            console.log('[SW] Usuario rechazó GENERAR desde la notificación.', {
+            /*console.log('[SW] Usuario rechazó GENERAR desde la notificación.', {
                 sessionId,
                 email
-            });
+            });*/
+            console.log('[SW] Usuario rechazó GENERAR desde la notificación.');
             
         }
 
@@ -227,7 +231,7 @@ self.addEventListener('notificationclick', (event) => {
 
 
     if (actionType === 'register') {
-        // (Si en algún momento usas push para confirmar registro directamente)
+        // VINCULACIÓN DE MÓVIL
         if (isConfirm) {
             const url = `${SERVER_BASE_URL}/mobile_client/register-confirm?sessionId=${encodeURIComponent(
                 sessionId || ''
@@ -242,7 +246,8 @@ self.addEventListener('notificationclick', (event) => {
     if (actionType === 'register_continue') {
         // PUSH DE PRUEBA DESPUÉS DE VINCULACIÓN
         if (isConfirm) {
-            console.log('[SW] Abriendo continueUrl (login):', continueUrl);
+            //console.log('[SW] Abriendo continueUrl (login):', continueUrl);
+            console.log('[SW] Abriendo continueUrl (login)');
             open(continueUrl);
         } else if (event.action === 'deny') {
             console.log('[SW] Usuario canceló continuar con registro biométrico.');
@@ -251,8 +256,8 @@ self.addEventListener('notificationclick', (event) => {
     }
 
 
-    // Fallback genérico: si no sabemos el tipo, pero hay continueUrl,
-    // lo tratamos como "confirmar".
+    // Fallback genérico: si no se sabe el tipo, pero hay continueUrl,
+    // se trata como "confirmar".
     if (isConfirm && continueUrl) {
         open(continueUrl);
     }
@@ -260,5 +265,6 @@ self.addEventListener('notificationclick', (event) => {
 
 self.addEventListener('notificationclose', (event) => {
     const { actionType, sessionId, email } = event.notification.data || {};
-    console.log('[SW] Notificación cerrada.', { actionType, sessionId, email });
+    //console.log('[SW] Notificación cerrada.', { actionType, sessionId, email });
+    console.log('[SW] Notificación cerrada.');
 });
