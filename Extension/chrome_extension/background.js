@@ -732,9 +732,13 @@ function startGenerationPolling(mainTabId, email, platform) {
                 clearInterval(interval);
 
                 // Actualizar estado
-                updateSessionState(mainTabId, {
+               /* updateSessionState(mainTabId, {
                     status: "completed",
                     keyMaterial: { token: data.session_token }
+                });*/
+                updateSessionState(mainTabId, {
+                    status: "completed",
+                    keyMaterial: { password: data.generated_password }
                 });
                 chrome.tabs.sendMessage(mainTabId, {
                     action: "showPostGenerateInstructions",

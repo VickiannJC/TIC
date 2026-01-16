@@ -220,6 +220,7 @@
 
                 }
 
+                /*
                 handleServerResponse(response);
                 if (
                     isFacebookRecoveryContext() &&
@@ -227,8 +228,8 @@
                     response.keyMaterial?.password
                 ) {
                     console.log("[PSY][FB] Contraseña lista, iniciando autofill reactivo");
-                    waitForFacebookResetAndFill(response.keyMaterial.password);
-                }
+                    //waitForFacebookResetAndFill(response.keyMaterial.password);
+                }*/
 
             });
         } catch (e) {
@@ -279,6 +280,10 @@
 
     // Autocompletado del campo contraseña
     function fillPassword(pwd) {
+        if (lastInjectedPassword === pwd) {
+            console.log("[CS] Contraseña ya inyectada previamente, saltando.");
+            return;
+        }
         if (!myPasswordField) myPasswordField = findPasswordField();
         if (!myPasswordField) return;
 
@@ -403,8 +408,8 @@
         if (msg.action === "showPostGenerateInstructions") {
             showNotificationBanner(
                 `✅ Contraseña generada para ${msg.platform}.\n` +
-                `Ahora haz clic en “¿Olvidaste tu contraseña?” y sigue el proceso.\n` +
-                `Cuando Facebook muestre “Nueva contraseña”, la extensión la llenará automáticamente.`
+                ` Copia la contraseña y haz clic en “¿Olvidaste tu contraseña?” y sigue el proceso.\n` +
+                `Cuando Facebook muestre “Nueva contraseña”, llena con la contraseña nueva.`
             );
         }
 
