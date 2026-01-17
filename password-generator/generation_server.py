@@ -99,6 +99,7 @@ def verify_payload_signature(body: Dict[str, Any], header_sig: Optional[str]) ->
 
 
     if DEBUG_LOGS:
+        pass
         #print("DEBUG Expected signature:", expected_sig)
         #print("DEBUG Header signature:", header_sig)
     if not hmac.compare_digest(expected_sig, header_sig):
