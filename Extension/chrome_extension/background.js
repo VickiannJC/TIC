@@ -731,23 +731,74 @@ function startGenerationPolling(mainTabId, email, platform) {
             if (data.status === "authenticated") {
                 clearInterval(interval);
 
-                // Actualizar estado
-               /* updateSessionState(mainTabId, {
-                    status: "completed",
-                    keyMaterial: { token: data.session_token }
-                });*/
-                updateSessionState(mainTabId, {
-                    status: "completed",
-                    keyMaterial: { password: data.generated_password }
-                });
-                chrome.tabs.sendMessage(mainTabId, {
-                    action: "showPostGenerateInstructions",
-                    platform
-                });
+                if(!data.session_token){
+                    updateSessionState(mainTabId, {
+                        status: "error",
+                        error: "Falta session_token en generación."
+                    });
+                    return;
+                }
+                try {
+                    const v = await fetch(`${SERVER_BASE_URL}/validate-km-token`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Client-Key": EXT_CLIENT_KEY
+                        },
+                        body: JSON.stringify({ email, session_token: data.session_token, tabId: mainTabId })
+                    });
+                    const vData = await v.json();
+                    if (!v.ok || vData.valid !== true) {
+                        throw new Error("Invalid session_token (backend validation failed)");
+                    }
+                    const userHandle = vData.user_handle;
+                    if (!userHandle) throw new Error("Missing user_handle from backend");
 
-                notifyGeneratedPassword(platform, data.generated_password);
+                    await KMClient.init({
+                        kmBaseUrl: KM_URL,
+                        userHandle,
+                        pluginId: "chrome_ext",
+                        nodeBaseUrl: SERVER_BASE_URL,
+                        sessionToken: data.session_token,
+                        tabId: mainTabId,
+                        extClientKey: EXT_CLIENT_KEY
+                    });
 
-                return;
+                    await KMClient.ensureHandshake();
+
+                    const resp = await fetch(`${KM_URL}/get_password_enveloped`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({  
+                            user_handle: userHandle,
+                            plugin_id: "chrome_ext",
+                            platform: platform.toLowerCase().trim()
+                        })
+                    });
+
+                    const kmData = await resp.json();
+                    const pwBytes = await KMClient.envelopeDecrypt(kmData.encrypted_password);
+                    const password = new TextDecoder().decode(pwBytes);
+
+        
+                    updateSessionState(mainTabId, {
+                        status: "completed",
+                        keyMaterial: { password }
+                    });
+                    chrome.tabs.sendMessage(mainTabId, {
+                        action: "showPostGenerateInstructions",
+                        platform
+                    });
+
+                    notifyGeneratedPassword(platform, data.generated_password);
+
+                } catch (err) {
+                    console.error("❌ Error obteniendo contraseña generada desde KM:", err);
+                    updateSessionState(mainTabId, {
+                        status: "error",
+                        message: err?.message || "No se pudo obtener la contraseña desde el KM"
+                    });
+                }
             }
 
             if (data.status === "denied") {
