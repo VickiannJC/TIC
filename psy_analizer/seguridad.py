@@ -24,14 +24,14 @@ try:
     # Decodificar la clave de Base64 a bytes reales
     _AES_KEY = base64.b64decode(_AES_KEY_B64)
 
-    # Validación estricta para AES-256
+    # Validación  para AES-256
     if len(_AES_KEY) != 32:
         raise ValueError(f"Longitud de clave inválida: se requieren 32 bytes, se encontraron {len(_AES_KEY)}")
 
 except Exception as e:
     raise RuntimeError(f"Error crítico validando la clave de cifrado: {e}")
 
-# Inicializamos el motor GCM una sola vez (es thread-safe en cryptography)
+# Inicializamos el motor GCM una sola vez para reutilizarlo
 _aes_engine = AESGCM(_AES_KEY)
 
 
@@ -60,7 +60,7 @@ def proteger_datos_psicologicos(datos: dict) -> str:
         # Serializar: Dict -> JSON String -> Bytes
         datos_bytes = json.dumps(datos).encode('utf-8')
         
-        # Generar Nonce (IV) único de 12 bytes (OBLIGATORIO para GCM)
+        # Generar Nonce (IV) único de 12 bytes para AES-GCM
         nonce = os.urandom(12)
         encrypted = _aes_engine.encrypt(nonce, datos_bytes, None)
 
@@ -95,5 +95,5 @@ def descifrar_dict(bundle: str) -> dict:
         return json.loads(plaintext_bytes.decode("utf-8"))
         
     except Exception as e:
-        # Si la clave es incorrecta o los datos fueron manipulados, fallará aquí.
+        # Si la clave es incorrecta o los datos fueron manipulados
         raise RuntimeError("Fallo de autenticación o datos corruptos. No se puede descifrar.")

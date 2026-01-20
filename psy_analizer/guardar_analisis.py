@@ -14,7 +14,7 @@ def guardar_analisis_mongo(doc):
     res = col.insert_one(doc)
     return str(res.inserted_id)
 
-# Asumo que ya tienes tu conexión a 'db' o 'collection' configurada arriba en este archivo
+
 
 def buscar_usuario_por_hmac(id_hmac):
     """
