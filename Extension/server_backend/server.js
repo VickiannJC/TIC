@@ -2179,9 +2179,9 @@ app.post("/km-plugin-reg-token", clientAuth, async (req, res) => {
             return res.status(400).json({ ok: false, error: "missing_fields" });
         }
 
-        // Solo durante login ->en km_pending (biometría OK y aún no consumido)
+        // Solo durante login y generacion ->en km_pending (biometría OK y aún no consumido)
         const q = {
-            action: "autenticacion",
+            action: { $in: ["autenticacion", "generacion"] },
             status: "km_pending"
         };
         const tid = (tabId !== undefined && tabId !== null && tabId !== "") ? Number(tabId) : null;
@@ -2189,7 +2189,7 @@ app.post("/km-plugin-reg-token", clientAuth, async (req, res) => {
 
         const temp = await Temporal.findOne(q).sort({ createdAt: -1 });
         requireTemporal(temp, {
-            action: "autenticacion",
+            action: { $in: ["autenticacion", "generacion"] },
             statuses: ["km_pending"],
             tabId
         });
