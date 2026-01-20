@@ -5,7 +5,7 @@
     // Verificación de contexto de extensión
     if (typeof chrome === "undefined" || !chrome.runtime?.id) {
         console.warn("[EXT] content.js fuera de extensión. Abortando.");
-        return; 
+        return;
     }
 
     console.log("[EXT] content.js ejecutándose en contexto correcto");
@@ -13,6 +13,7 @@
     let myPasswordField = null;
 
     let lastInjectedPassword = null;
+    let lastFilledPassword = null;
 
     // PING AL BACKGROUND PARA VERIFICAR CONEXIÓN
     let pingIntervalId = null;
@@ -220,7 +221,7 @@
 
                 }
 
-                
+
                 handleServerResponse(response);
                 /*
                 if (
@@ -257,7 +258,7 @@
             resetButtons();
         }
 
-        
+
 
         // ERROR GENERAL
         if (data.status === "error") {
@@ -266,14 +267,14 @@
             resetButtons();
         }
         // AUTENTICACIÓN COMPLETADA — Autofill contraseña
-        if(data.status === "completed" && data.keyMaterial?.password) {
+        if (data.status === "completed" && data.keyMaterial?.password) {
             pendingPassword = data.keyMaterial.password;
             attemptAutofill();
             removeQRModal();
             resetButtons();
         }
-            
-    
+
+
 
         console.log("[PSY][STATE]", {
             status: data.status,
@@ -284,18 +285,19 @@
 
     }
     function attemptAutofill() {
-    if (!chrome.runtime?.id) return;
+        if (!chrome.runtime?.id) return;
 
-    const field = findPasswordField();
-    if (!field) {
-        // Reintentar cuando el DOM cambie
-        setTimeout(attemptAutofill, 300);
-        return;
+        const field = findPasswordField();
+        if (!field) {
+            // Reintentar cuando el DOM cambie
+            setTimeout(attemptAutofill, 300);
+            return;
+        }
+
+        fillPassword(pendingPassword);
+        injectShowPasswordButton(field);
+        pendingPassword = null;
     }
-
-    fillPassword(pendingPassword);
-    pendingPassword = null;
-}
 
 
     // Autocompletado del campo contraseña
@@ -314,6 +316,8 @@
         myPasswordField.dispatchEvent(new Event('input', { bubbles: true }));
         myPasswordField.dispatchEvent(new Event('change', { bubbles: true }));
         myPasswordField.dispatchEvent(new Event('blur', { bubbles: true }));
+        lastInjectedPassword = pwd;
+        lastFilledPassword = pwd;
     }
 
     function fillInput(el, value) {
@@ -411,7 +415,7 @@
             showNotificationBanner("❌ No se pudo enviar la notificación a tu móvil");
         }
 
-        if(msg.action === "resetButtons") {
+        if (msg.action === "resetButtons") {
             resetButtons();
         }
         if (msg.action === "authLoginSuccess") {
@@ -451,12 +455,16 @@
         // Observa cambios en DOM para detectar cuando aparece el campo de nueva contraseña (FB SPA)
         if (isFacebookHost()) {
             const obs = new MutationObserver(() => {
+                const field = findPasswordField();
+                if (field) {
+                    injectShowPasswordButton(field);
+                }
                 // Si estamos en recovery/reset, chequea estado y trata de autofill cuando toque
                 if (isFacebookRecoveryContext()) {
                     checkBuzon();
                 }
 
-                if(!pendingPassword) return;
+                if (!pendingPassword) return;
                 attemptAutofill();
 
                 // Si aparece un password field y aún no inyectaste botón / tracking
@@ -672,6 +680,101 @@
             }
         });
     }
+
+
+    function injectShowPasswordButton(input) {
+        if (!input || input.dataset.hasShowPasswordBtn) return;
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.setAttribute("aria-label", "Mostrar contraseña");
+        btn.title = "Mostrar contraseña";
+
+        // Estado interno
+        let visible = false;
+
+        // Iconos (Unicode → no dependencias)
+        const ICON_SHOW = "👁️";
+        const ICON_HIDE = "🙈";
+
+        btn.textContent = ICON_SHOW;
+
+        // Estilo visual
+        btn.style.cssText = `
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        border: none;
+        background: rgba(255,255,255,0.75);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        font-size: 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        transition: all 0.2s ease;
+    `;
+
+        // Hover / active feedback
+        btn.onmouseenter = () => {
+            btn.style.transform = "translateY(-50%) scale(1.1)";
+            btn.style.background = "rgba(230,230,255,0.9)";
+        };
+        btn.onmouseleave = () => {
+            btn.style.transform = "translateY(-50%) scale(1)";
+            btn.style.background = "rgba(255,255,255,0.75)";
+        };
+        btn.onmousedown = () => {
+            btn.style.transform = "translateY(-50%) scale(0.95)";
+        };
+        btn.onmouseup = () => {
+            btn.style.transform = "translateY(-50%) scale(1.1)";
+        };
+
+        // Click → toggle visibilidad
+        btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            visible = !visible;
+
+            togglePasswordVisibility(input);
+
+            btn.textContent = visible ? ICON_HIDE : ICON_SHOW;
+            btn.title = visible ? "Ocultar contraseña" : "Mostrar contraseña";
+        });
+
+        // Asegurar contenedor relativo
+        const wrapper = input.parentElement;
+        if (getComputedStyle(wrapper).position === "static") {
+            wrapper.style.position = "relative";
+        }
+
+        wrapper.appendChild(btn);
+        input.dataset.hasShowPasswordBtn = "true";
+    }
+
+    function togglePasswordVisibility(input) {
+        if (!input || !lastFilledPassword) return;
+
+        if (input.type === "password") {
+            input.type = "text";
+            input.value = lastFilledPassword;
+        } else {
+            input.type = "password";
+            input.value = lastFilledPassword;
+        }
+
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
 
     // ========================================================
     // MODAL QR — Para registro móvil

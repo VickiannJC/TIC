@@ -482,6 +482,9 @@ async function initiateGeneration(mainTabId, email, platform) {
         }
 
         startGenerationPolling(mainTabId, email, platform);
+        try{
+            chrome.tabs.sendMessage(mainTabId, { action: "authPushSent " });
+        }catch(e){} 
 
     } catch (err) {
         updateSessionState(mainTabId, { status: "error", error: err.message });
