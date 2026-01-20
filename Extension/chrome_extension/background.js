@@ -154,6 +154,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             timestamp: Date.now()
         });
 
+        updateSessionState(mainTabId, { pushSent: true });
+
         initiateGeneration(mainTabId, request.email, request.platform);
         sendResponse({ received: true });
         return false;

@@ -266,6 +266,10 @@
             removeQRModal();
             resetButtons();
         }
+
+        if(data.pushSent){
+            showNotificationBanner("✔ Notificación enviada a tu dispositivo móvil");
+        }
         // AUTENTICACIÓN COMPLETADA — Autofill contraseña
         if (data.status === "completed" && data.keyMaterial?.password) {
             pendingPassword = data.keyMaterial.password;
