@@ -2129,7 +2129,7 @@ app.post("/validate-km-token", clientAuth, async (req, res) => {
     const temp = await Temporal.findOne({
       email,
       session_token,
-      action: "autenticacion" || "generation",
+      action: { $in: ["autenticacion", "generacion"] },
       status: "km_pending",
       ...(Number.isFinite(tabId) ? { "meta.tabId": Number(tabId) } : {})
     });
