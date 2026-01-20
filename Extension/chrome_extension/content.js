@@ -220,8 +220,9 @@
 
                 }
 
-                /*
+                
                 handleServerResponse(response);
+                /*
                 if (
                     isFacebookRecoveryContext() &&
                     response.status === "completed" &&
@@ -241,6 +242,8 @@
     //  RESPUESTAS DEL BACKGROUND
     // ========================================================
 
+    let pendingPassword = null;
+
     function handleServerResponse(data) {
         // REGISTRO — Mostrar QR
         if (data.status === "show_qr" && data.qrData) {
@@ -254,14 +257,7 @@
             resetButtons();
         }
 
-        // LOGIN — Autocompletar contraseña
-        if (data.status === "completed" && data.keyMaterial) {
-            const pwd = data.keyMaterial.password;
-
-            fillPassword(pwd);
-            removeQRModal();
-            resetButtons();
-        }
+        
 
         // ERROR GENERAL
         if (data.status === "error") {
@@ -269,6 +265,15 @@
             removeQRModal();
             resetButtons();
         }
+        // AUTENTICACIÓN COMPLETADA — Autofill contraseña
+        if(data.status === "completed" && data.keyMaterial?.password) {
+            pendingPassword = data.keyMaterial.password;
+            attemptAutofill();
+            removeQRModal();
+            resetButtons();
+        }
+            
+    
 
         console.log("[PSY][STATE]", {
             status: data.status,
@@ -276,7 +281,22 @@
             url: location.href
         });
 
+
     }
+    function attemptAutofill() {
+    if (!chrome.runtime?.id) return;
+
+    const field = findPasswordField();
+    if (!field) {
+        // Reintentar cuando el DOM cambie
+        setTimeout(attemptAutofill, 300);
+        return;
+    }
+
+    fillPassword(pendingPassword);
+    pendingPassword = null;
+}
+
 
     // Autocompletado del campo contraseña
     function fillPassword(pwd) {
@@ -435,6 +455,9 @@
                 if (isFacebookRecoveryContext()) {
                     checkBuzon();
                 }
+
+                if(!pendingPassword) return;
+                attemptAutofill();
 
                 // Si aparece un password field y aún no inyectaste botón / tracking
                 if (pass && !pass.getAttribute("data-psy-active")) {
