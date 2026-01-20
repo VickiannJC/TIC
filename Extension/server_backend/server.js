@@ -2188,14 +2188,16 @@ app.post("/km-plugin-reg-token", clientAuth, async (req, res) => {
         if (Number.isFinite(tid)) q["meta.tabId"] = tid;
 
         const temp = await Temporal.findOne(q).sort({ createdAt: -1 });
-        requireTemporal(temp, {
-            action: { $in: ["autenticacion", "generacion"] },
-            statuses: ["km_pending"],
-            tabId
-        });
+    
         if (!temp) {
             return res.status(403).json({ ok: false, error: "invalid_session_state" });
         }
+
+        requireTemporal(temp, {
+            action: temp.action,
+            statuses: ["km_pending"],
+            tabId
+        });
         const { user_id } = verifyAndDecodeUserHandle(userHandle);
 
 
